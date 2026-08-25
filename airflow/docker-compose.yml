@@ -15,10 +15,20 @@ services:
     environment:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
       AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+      AIRFLOW__API_AUTH__JWT_SECRET: "epidemiological-airflow-local-jwt-secret-2026"
+
+      DATABRICKS_HOST: ${DATABRICKS_HOST}
+      DATABRICKS_TOKEN: ${DATABRICKS_TOKEN}
+      INMET_JOB_ID: ${INMET_JOB_ID}
+      SINAN_JOB_ID: ${SINAN_JOB_ID}
+      GOLD_JOB_ID: ${GOLD_JOB_ID}
+
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
+
     command: >
       bash -c "
       airflow db migrate
@@ -28,29 +38,77 @@ services:
     image: apache/airflow:3.0.6
     depends_on:
       - postgres
+
     environment:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
       AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+      AIRFLOW__API_AUTH__JWT_SECRET: "epidemiological-airflow-local-jwt-secret-2026"
+
+      DATABRICKS_HOST: ${DATABRICKS_HOST}
+      DATABRICKS_TOKEN: ${DATABRICKS_TOKEN}
+      INMET_JOB_ID: ${INMET_JOB_ID}
+      SINAN_JOB_ID: ${SINAN_JOB_ID}
+      GOLD_JOB_ID: ${GOLD_JOB_ID}
+
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
+
     ports:
       - "8080:8080"
+
     command: api-server
 
   airflow-scheduler:
     image: apache/airflow:3.0.6
     depends_on:
       - postgres
+      - airflow-apiserver
+
     environment:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
       AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+      AIRFLOW__API_AUTH__JWT_SECRET: "epidemiological-airflow-local-jwt-secret-2026"
+
+      DATABRICKS_HOST: ${DATABRICKS_HOST}
+      DATABRICKS_TOKEN: ${DATABRICKS_TOKEN}
+      INMET_JOB_ID: ${INMET_JOB_ID}
+      SINAN_JOB_ID: ${SINAN_JOB_ID}
+      GOLD_JOB_ID: ${GOLD_JOB_ID}
+
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
+
     command: scheduler
+
+  airflow-dag-processor:
+    image: apache/airflow:3.0.6
+    depends_on:
+      - postgres
+
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+      AIRFLOW__API_AUTH__JWT_SECRET: "epidemiological-airflow-local-jwt-secret-2026"
+
+      DATABRICKS_HOST: ${DATABRICKS_HOST}
+      DATABRICKS_TOKEN: ${DATABRICKS_TOKEN}
+      INMET_JOB_ID: ${INMET_JOB_ID}
+      SINAN_JOB_ID: ${SINAN_JOB_ID}
+      GOLD_JOB_ID: ${GOLD_JOB_ID}
+
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+
+    command: dag-processor
 
 volumes:
   airflow-postgres:

@@ -1,0 +1,91 @@
+import os
+import time
+import requests
+from datetime import datetime
+from airflow.sdk import DAG, task
+
+DATABRICKS_HOST = os.environ.get("DATABRICKS_HOST")
+DATABRICKS_TOKEN = os.environ.get("DATABRICKS_TOKEN")
+
+INMET_JOB_ID = int(os.environ["INMET_JOB_ID"])
+SINAN_JOB_ID = int(os.environ["SINAN_JOB_ID"])
+GOLD_JOB_ID = int(os.environ["GOLD_JOB_ID"])
+
+def run_databricks_job(job_id: int):
+    
+    headers = {
+        "Authorization": f"Bearer {DATABRICKS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    response = requests.post(
+        f"{DATABRICKS_HOST}/api/2.1/jobs/run-now",
+        headers=headers,
+        json={"job_id": job_id},
+        timeout=30,
+    )
+    response.raise_for_status()
+    
+    run_id = response.json()["run_id"]
+    
+    print(f"Job {job_id} started with run_id: {run_id}")
+    
+    while True:
+        response = requests.get(
+            f"{DATABRICKS_HOST}/api/2.1/jobs/runs/get",
+            headers=headers,
+            params={"run_id": run_id},
+            timeout=30,
+        )
+        response.raise_for_status()
+        
+        run = response.json()
+        
+        lifecycle_state = run["state"]["life_cycle_state"]
+        result_state = run["state"].get("result_state")
+        
+        print(
+            f"run_id: {run_id}, lifecycle_state: {lifecycle_state}, result_state: {result_state}"
+        )
+        
+        if lifecycle_state == "TERMINATED":
+            if result_state != "SUCCESS":
+                raise RuntimeError(f"Job {job_id} failed with result_state: {result_state}")
+            print(f"Job {job_id} completed successfully.")
+            return
+        if lifecycle_state in [
+            "INTERNAL_ERROR",
+            "SKIPPED",
+        ]:
+            raise RuntimeError(
+                f"Databricks Job terminou em estado inválido: "
+                f"{lifecycle_state}"
+            )
+
+        time.sleep(15)
+        
+with DAG(
+    dag_id="epidemiological_intelligence_pipeline",
+    start_date=datetime(2026, 1, 1),
+    schedule=None,
+    catchup=False,
+    tags=["databricks", "epidemiology"],
+) as dag:
+
+    @task
+    def process_inmet():
+        run_databricks_job(INMET_JOB_ID)
+
+    @task
+    def process_sinan():
+        run_databricks_job(SINAN_JOB_ID)
+
+    @task
+    def silver_to_gold():
+        run_databricks_job(GOLD_JOB_ID)
+
+    inmet = process_inmet()
+    sinan = process_sinan()
+    gold = silver_to_gold()
+
+    [inmet, sinan] >> gold
+    
