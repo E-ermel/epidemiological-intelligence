@@ -87,3 +87,11 @@
 {"timestamp":"2026-08-25T17:31:55.767578","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/epidemiological_pipeline.py","logger":"airflow.models.dagbag.DagBag"}
 {"timestamp":"2026-08-25T17:32:26.149607","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/epidemiological_pipeline.py","logger":"airflow.models.dagbag.DagBag"}
 {"timestamp":"2026-08-25T17:32:56.508934","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/epidemiological_pipeline.py","logger":"airflow.models.dagbag.DagBag"}
+{"timestamp":"2026-08-25T17:33:26.887619","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/epidemiological_pipeline.py","logger":"airflow.models.dagbag.DagBag"}
+{"timestamp":"2026-08-25T17:33:57.225149","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/epidemiological_pipeline.py","logger":"airflow.models.dagbag.DagBag"}
+{"timestamp":"2026-08-25T17:34:27.611876","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/epidemiological_pipeline.py","logger":"airflow.models.dagbag.DagBag"}
+{"timestamp":"2026-08-25T17:34:57.991861","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/epidemiological_pipeline.py","logger":"airflow.models.dagbag.DagBag"}
+{"timestamp":"2026-08-25T17:35:28.365042","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/epidemiological_pipeline.py","logger":"airflow.models.dagbag.DagBag"}
+{"timestamp":"2026-08-25T17:35:58.723603","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/epidemiological_pipeline.py","logger":"airflow.models.dagbag.DagBag"}
+{"timestamp":"2026-08-25T17:36:29.091171","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/epidemiological_pipeline.py","logger":"airflow.models.dagbag.DagBag"}
+{"timestamp":"2026-08-25T17:36:59.481702","level":"info","event":"Filling up the DagBag from /opt/airflow/dags/epidemiological_pipeline.py","logger":"airflow.models.dagbag.DagBag"}
