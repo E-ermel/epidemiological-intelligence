@@ -1,6 +1,22 @@
+# Airflow
+airflow/.env
+airflow/logs/
+airflow/secrets/
+
+# GCP credentials
+application_default_credentials.json
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Terraform
 .terraform/
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
-terraform.tfvars
-*.env 
+
+# IDE / OS
+.vscode/
+.DS_Store

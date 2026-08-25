@@ -3,6 +3,7 @@ import time
 import requests
 from datetime import datetime
 from airflow.sdk import DAG, task
+from airflow.providers.google.cloud.transfers.gcs_to_bigquery import GCSToBigQueryOperator
 
 DATABRICKS_HOST = os.environ.get("DATABRICKS_HOST")
 DATABRICKS_TOKEN = os.environ.get("DATABRICKS_TOKEN")
@@ -86,6 +87,24 @@ with DAG(
     inmet = process_inmet()
     sinan = process_sinan()
     gold = silver_to_gold()
+    
+    load_gold_bigquery = GCSToBigQueryOperator(
+    task_id="load_gold_bigquery",
+    bucket="epidemiological-intelligence",
+    source_objects=[
+        "gold/epidemiology_climate/*.parquet"
+    ],
+    destination_project_dataset_table=(
+        "affable-alpha-506516-r7."
+        "epidemiological_intelligence."
+        "epidemiology_climate_monthly"
+    ),
+    source_format="PARQUET",
+    write_disposition="WRITE_TRUNCATE",
+    autodetect=True,
+    gcp_conn_id="google_cloud_default",
+    project_id="affable-alpha-506516-r7",
+)
 
-    [inmet, sinan] >> gold
+    [inmet, sinan] >> gold >> load_gold_bigquery
     
