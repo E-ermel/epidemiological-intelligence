@@ -1,50 +1,44 @@
-# src/epidemiological_intelligence/modeling/config.py
-
 TRAIN_END = "2023-12-01"
 TEST_START = "2024-01-01"
 
-TARGET = "cases"
-
-ID_COLUMNS = [
-    "municipality",
-    "reference_date",
-    "disease",
-]
-
-BASE_FEATURES = [
-    "municipality",
-    "month",
-]
-
 MODEL_CONFIG = {
     "ASMA": {
-        "model": "negative_binomial",
-        "features": [],
+        "features": [
+            "relative_humidity_avg_pct",
+            "dew_point_avg_c_lag1",
+        ],
     },
 
     "BRONQUITE AGUDA": {
-        "model": "negative_binomial",
-        "features": [],
+        "features": [
+            "relative_humidity_avg_pct",
+            "precipitation_avg_observation_mm_lag3",
+        ],
     },
 
     "BRONQUITE CRÔNICA": {
-        "model": "negative_binomial",
-        "features": [],
+        "features": [
+            "wind_gust_max_ms",
+        ],
     },
 
     "INFARTO AGUDO DO MIOCÁRDIO": {
-        "model": "negative_binomial",
-        "features": [],
+        "features": [
+            "wind_speed_avg_ms_lag1",
+        ],
     },
 
     "INSUFICIÊNCIA CARDÍACA": {
-        "model": "negative_binomial",
-        "features": [],
+        "features": [
+            "atmospheric_pressure_avg_mb",
+            "dew_point_avg_c",
+        ],
     },
 
     "LEPTOSPIROSE": {
-        "model": "negative_binomial",
         "features": [
+            "precipitation_sum_mm_lag1",
+            "relative_humidity_avg_pct_lag1",
         ],
     },
 }

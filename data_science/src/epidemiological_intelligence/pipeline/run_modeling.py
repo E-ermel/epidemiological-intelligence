@@ -1,5 +1,16 @@
+import pandas as pd
+
 from epidemiological_intelligence.data.preparation import (
     prepare_model_data,
+)
+
+from epidemiological_intelligence.features.lags import (
+    create_climate_lags,
+)
+
+from epidemiological_intelligence.modeling.configs import (
+    MODEL_CONFIG,
+    TEST_START,
 )
 
 from epidemiological_intelligence.modeling.train import (
@@ -23,50 +34,99 @@ from epidemiological_intelligence.artifacts.results import (
 
 
 def run_disease_pipeline(
-    df,
-    disease,
-    selected_features,
+    df: pd.DataFrame,
+    disease: str,
 ):
+
+    if disease not in MODEL_CONFIG:
+        raise ValueError(
+            f"Doença não configurada: {disease}"
+        )
+
+    # ------------------------------
     # 1. Preparação
-    df = prepare_model_data(df)
+    # ------------------------------
 
-    # 2. Split temporal
-    train_df = df[
-        df["reference_date"] < "2024-01-01"
+    model_df = prepare_model_data(df)
+
+    # ------------------------------
+    # 2. Feature engineering
+    # ------------------------------
+
+    model_df = create_climate_lags(
+        model_df
+    )
+
+    selected_features = (
+        MODEL_CONFIG[disease]["features"]
+    )
+
+    # ------------------------------
+    # 3. Split temporal
+    # ------------------------------
+
+    cutoff = pd.Timestamp(TEST_START)
+
+    train_df = model_df[
+        model_df["reference_date"] < cutoff
     ].copy()
 
-    test_df = df[
-        df["reference_date"] >= "2024-01-01"
+    test_df = model_df[
+        model_df["reference_date"] >= cutoff
     ].copy()
 
-    # 3. Treinamento
-    result = train_disease_model(
+    # ------------------------------
+    # 4. Treinamento
+    # ------------------------------
+
+    model_result = train_disease_model(
         train_df=train_df,
         test_df=test_df,
         disease=disease,
         selected_features=selected_features,
     )
 
-    # 4. Previsões
+    # ------------------------------
+    # 5. Previsão
+    # ------------------------------
+
     predictions = predict_models(
-        base_model=result.base_model,
-        final_model=result.final_model,
-        df=result.test_df,
+        base_model=model_result.base_model,
+        final_model=model_result.final_model,
+        df=model_result.test_df,
     )
 
-    # 5. Avaliação
+    # ------------------------------
+    # 6. Avaliação global
+    # ------------------------------
+
     comparison = compare_models(
         y_true=predictions["cases"],
-        base_pred=predictions["base_prediction"],
-        final_pred=predictions["final_prediction"],
+        base_pred=predictions[
+            "base_prediction"
+        ],
+        final_pred=predictions[
+            "final_prediction"
+        ],
     )
 
-    municipality_metrics = metrics_by_municipality(
-        test_df=predictions,
-        prediction_column="final_prediction",
+    # ------------------------------
+    # 7. Avaliação por município
+    # ------------------------------
+
+    municipality_metrics = (
+        metrics_by_municipality(
+            test_df=predictions,
+            prediction_column=(
+                "final_prediction"
+            ),
+        )
     )
 
-    # 6. Salvar artefatos
+    # ------------------------------
+    # 8. Salvar artefatos
+    # ------------------------------
+
     save_metrics(
         disease=disease,
         metrics=comparison,
@@ -79,12 +139,24 @@ def run_disease_pipeline(
 
     save_municipality_metrics(
         disease=disease,
-        municipality_metrics=municipality_metrics,
+        municipality_metrics=(
+            municipality_metrics
+        ),
     )
 
+    # ------------------------------
+    # 9. Retorno
+    # ------------------------------
+
     return {
-        "model_result": result,
+        "disease": disease,
+        "selected_features": (
+            selected_features
+        ),
+        "model_result": model_result,
         "predictions": predictions,
         "comparison": comparison,
-        "municipality_metrics": municipality_metrics,
+        "municipality_metrics": (
+            municipality_metrics
+        ),
     }
