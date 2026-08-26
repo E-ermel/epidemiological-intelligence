@@ -57,25 +57,31 @@ inmet_station_monthly = (
 
     .agg(
         F.sum("precipitation_mm")
-        .alias("precipitation_sum_mm"),
+            .alias("precipitation_sum_mm"),
+
+        F.avg("precipitation_mm")
+            .alias("precipitation_avg_observation_mm"),
+
+        F.max("precipitation_mm")
+            .alias("precipitation_max_observation_mm"),
 
         F.avg("temperature_c")
-        .alias("temperature_avg_c"),
+            .alias("temperature_avg_c"),
 
         F.avg("dew_point_temperature_c")
-        .alias("dew_point_avg_c"),
+            .alias("dew_point_avg_c"),
 
         F.avg("relative_humidity_pct")
-        .alias("relative_humidity_avg_pct"),
+            .alias("relative_humidity_avg_pct"),
 
         F.avg("atmospheric_pressure_mb")
-        .alias("atmospheric_pressure_avg_mb"),
+            .alias("atmospheric_pressure_avg_mb"),
 
         F.avg("wind_speed_ms")
-        .alias("wind_speed_avg_ms"),
+            .alias("wind_speed_avg_ms"),
 
         F.max("wind_gust_ms")
-        .alias("wind_gust_max_ms")
+            .alias("wind_gust_max_ms")
     )
 )
 
@@ -92,28 +98,34 @@ inmet_monthly = (
 
     .agg(
         F.avg("precipitation_sum_mm")
-        .alias("precipitation_avg_mm"),
+            .alias("precipitation_sum_mm"),
+
+        F.avg("precipitation_avg_observation_mm")
+            .alias("precipitation_avg_observation_mm"),
+
+        F.max("precipitation_max_observation_mm")
+            .alias("precipitation_max_observation_mm"),
 
         F.avg("temperature_avg_c")
-        .alias("temperature_avg_c"),
+            .alias("temperature_avg_c"),
 
         F.avg("dew_point_avg_c")
-        .alias("dew_point_avg_c"),
+            .alias("dew_point_avg_c"),
 
         F.avg("relative_humidity_avg_pct")
-        .alias("relative_humidity_avg_pct"),
+            .alias("relative_humidity_avg_pct"),
 
         F.avg("atmospheric_pressure_avg_mb")
-        .alias("atmospheric_pressure_avg_mb"),
+            .alias("atmospheric_pressure_avg_mb"),
 
         F.avg("wind_speed_avg_ms")
-        .alias("wind_speed_avg_ms"),
+            .alias("wind_speed_avg_ms"),
 
         F.max("wind_gust_max_ms")
-        .alias("wind_gust_max_ms"),
+            .alias("wind_gust_max_ms"),
 
         F.countDistinct("station_code")
-        .alias("station_count")
+            .alias("station_count")
     )
 
     .withColumnRenamed(
