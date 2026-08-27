@@ -1,5 +1,8 @@
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
+from epidemiological_agent.prompts.system_prompt import (
+    SYSTEM_PROMPT,
+)
 
 from langchain.agents import create_agent
 
@@ -29,4 +32,5 @@ llm = ChatOpenAI(
 agent = create_agent(
     model=llm,
     tools=tools,
+    system_prompt=SYSTEM_PROMPT,
 )
