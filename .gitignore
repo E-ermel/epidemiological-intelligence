@@ -20,3 +20,8 @@ __pycache__/
 # IDE / OS
 .vscode/
 .DS_Store
+
+.ipynb_checkpoints
+notebooks
+artifacts
+.git

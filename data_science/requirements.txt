@@ -1,0 +1,10 @@
+pandas
+numpy
+scipy
+scikit-learn
+statsmodels
+pyarrow
+db-dtypes
+google-cloud-bigquery
+google-cloud-storage
+patsy
