@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+import logging
 
 load_dotenv()
 
@@ -8,7 +9,13 @@ from epidemiological_agent.api.schemas import (
     ChatRequest,
     ChatResponse,
 )
+from epidemiological_agent.logging_config import (
+    configure_logging,
+)
 from epidemiological_agent.graph.graph import agent_graph
+configure_logging()
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Epidemiological Intelligence API",
@@ -18,6 +25,15 @@ app = FastAPI(
     ),
      version="0.1.0",
 )
+
+@app.get("/")
+def root():
+    return {
+        "service": "Epidemiological Intelligence API",
+        "status": "running",
+        "docs": "/docs",
+        "health": "/health",
+    }
 
 @app.get("/health")
 def health_check():
@@ -29,9 +45,18 @@ def health_check():
     "/chat",
     response_model=ChatResponse,
 )
+@app.post(
+    "/chat",
+    response_model=ChatResponse,
+)
 def chat(
     request: ChatRequest,
 ) -> ChatResponse:
+
+    logger.info(
+        "Processing chat request | conversation_id=%s",
+        request.conversation_id,
+    )
 
     try:
         config = {
@@ -54,13 +79,23 @@ def chat(
 
         answer = result["messages"][-1].content
 
+        logger.info(
+            "Chat request completed | conversation_id=%s",
+            request.conversation_id,
+        )
+
         return ChatResponse(
             answer=answer,
             conversation_id=request.conversation_id,
         )
 
-    except Exception as exc:
+    except Exception:
+        logger.exception(
+            "Chat request failed | conversation_id=%s",
+            request.conversation_id,
+        )
+
         raise HTTPException(
             status_code=500,
             detail="Erro interno ao processar a solicitação.",
-        ) from exc
+        )

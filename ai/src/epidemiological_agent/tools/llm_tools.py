@@ -60,7 +60,14 @@ def epidemiological_data_tool(
 def model_metrics_tool(
     disease: str,
 ) -> str:
-    
+    """
+    Return evaluation metrics for a disease model.
+
+    Use this tool when the user asks for actual model
+    performance metrics such as MAE, RMSE, R2, WAPE,
+    or comparison between baseline and final model.
+    """
+
     try:
         metrics = get_model_metrics(
             disease
@@ -161,6 +168,19 @@ def total_cases_tool(
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> str:
+    """
+    Return the total number of observed cases for a disease.
+
+    Use this tool when the user asks:
+    - how many cases occurred;
+    - total cases;
+    - cumulative cases;
+    - total cases for a municipality;
+    - total cases within a specific date range.
+
+    Prefer this tool over epidemiological_data_tool when
+    only the aggregated total is required.
+    """
 
     try:
         total = get_total_cases(
@@ -194,6 +214,23 @@ def total_cases_tool(
 def retrieve_knowledge_tool(
     query: str,
 ) -> str:
+    """
+    Search the project's methodological knowledge base.
+
+    Use this tool for questions about:
+    - modeling methodology;
+    - Negative Binomial regression;
+    - MAE, RMSE, R2 and WAPE definitions;
+    - statistical interpretation;
+    - model limitations;
+    - lags and temporal features;
+    - data leakage;
+    - association versus causality;
+    - project modeling decisions.
+
+    Do not use this tool to retrieve actual numerical
+    model metrics or historical epidemiological values.
+    """
 
     try:
         docs = search_knowledge(

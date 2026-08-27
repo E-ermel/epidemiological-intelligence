@@ -4,7 +4,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 AI_ROOT = Path(__file__).resolve().parents[3]
-KNOWLEDGE_PATH = AI_ROOT / "src" / "knowledge" / "modeling_methodology.md"
+KNOWLEDGE_PATH = AI_ROOT  / "knowledge" / "modeling_methodology.md"
 CHROMA_PATH = AI_ROOT / "chroma_db"
 
 def load_knowledge() -> str:
