@@ -1,6 +1,7 @@
 import json
 
 from langchain_core.tools import tool
+from google.api_core.exceptions import GoogleAPIError
 
 from epidemiological_agent.tools.model_tools import (
     get_model_metrics,
@@ -14,6 +15,9 @@ from epidemiological_agent.tools.bigquery_tools import (
 )
 from epidemiological_agent.rag.vector_store import (
     search_knowledge,
+)
+from epidemiological_agent.tools.tool_errors import (
+    tool_error_response,
 )
 
 @tool
@@ -61,14 +65,35 @@ def model_metrics_tool(
     MAE, RMSE, R2 and WAPE.
     """
 
-    metrics = get_model_metrics(
-        disease
-    )
+    try:
+        metrics = get_model_metrics(
+            disease
+        )
 
-    return json.dumps(
-        metrics,
-        ensure_ascii=False,
-    )
+        return json.dumps(
+            metrics,
+            ensure_ascii=False,
+        )
+
+    except FileNotFoundError:
+        return tool_error_response(
+            source="gcs",
+            error_type="artifact_not_found",
+            message=(
+                f"Não foram encontrados artefatos "
+                f"do modelo para {disease}."
+            ),
+        )
+
+    except GoogleAPIError:
+        return tool_error_response(
+            source="gcs",
+            error_type="storage_unavailable",
+            message=(
+                "Não foi possível acessar os artefatos "
+                "do modelo no GCS."
+            ),
+        )
     
 @tool
 def municipality_model_metrics_tool(
@@ -133,21 +158,29 @@ def total_cases_tool(
     """
     Return the total observed number of cases using SUM(cases).
 
-    ALWAYS use this tool when the user asks:
-    - how many cases occurred
-    - total cases
-    - cumulative number of cases
-    - number of cases in a period
+    ALWAYS use this tool when the user asks for the total
+    number of observed cases in a period.
     """
 
-    total = get_total_cases(
-        disease=disease,
-        municipality=municipality,
-        start_date=start_date,
-        end_date=end_date,
-    )
+    try:
+        total = get_total_cases(
+            disease=disease,
+            municipality=municipality,
+            start_date=start_date,
+            end_date=end_date,
+        )
 
-    return str(total)
+        return str(total)
+
+    except Exception:
+        return tool_error_response(
+            source="bigquery",
+            error_type="query_failed",
+            message=(
+                "Não foi possível consultar o total de casos "
+                "no BigQuery."
+            ),
+        )
 
 @tool
 def retrieve_knowledge_tool(
@@ -168,17 +201,35 @@ def retrieve_knowledge_tool(
     - project modeling decisions
     """
 
-    docs = search_knowledge(
-        query=query,
-        k=4,
-    )
+    try:
+        docs = search_knowledge(
+            query=query,
+            k=2,
+        )
 
-    if not docs:
-        return "No relevant project documentation was found."
+        if not docs:
+            return json.dumps(
+                {
+                    "status": "not_found",
+                    "message": (
+                        "Nenhum conteúdo metodológico relevante "
+                        "foi encontrado."
+                    ),
+                },
+                ensure_ascii=False,
+            )
 
-    context = "\n\n---\n\n".join(
-        doc.page_content
-        for doc in docs
-    )
+        return "\n\n---\n\n".join(
+            doc.page_content
+            for doc in docs
+        )
 
-    return context
+    except Exception:
+        return tool_error_response(
+            source="rag",
+            error_type="retrieval_failed",
+            message=(
+                "Não foi possível consultar "
+                "a base de conhecimento."
+            ),
+        )
