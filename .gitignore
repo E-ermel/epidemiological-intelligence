@@ -1,5 +1,5 @@
 # Airflow
-airflow/.env
+
 airflow/logs/
 airflow/secrets/
 
@@ -25,3 +25,7 @@ __pycache__/
 notebooks
 artifacts
 .git
+*.env
+*.md
+
+ai/src/epidemiological_agent/notebook_test.ipynb
