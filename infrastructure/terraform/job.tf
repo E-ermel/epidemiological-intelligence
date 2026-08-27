@@ -46,9 +46,9 @@ resource "google_cloud_run_v2_job" "data_science" {
         }
 
         env {
-            name  = "ARTIFACT_BUCKET"
-            value = var.bucket_name
-            }
+          name  = "ARTIFACT_BUCKET"
+          value = var.bucket_name
+        }
 
         env {
           name  = "MODEL_ARTIFACT_PREFIX"

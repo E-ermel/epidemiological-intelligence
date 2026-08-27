@@ -4,6 +4,9 @@ import requests
 from datetime import datetime
 from airflow.sdk import DAG, task
 from airflow.providers.google.cloud.transfers.gcs_to_bigquery import GCSToBigQueryOperator
+from airflow.providers.google.cloud.operators.cloud_run import (
+    CloudRunExecuteJobOperator,
+)
 
 DATABRICKS_HOST = os.environ.get("DATABRICKS_HOST")
 DATABRICKS_TOKEN = os.environ.get("DATABRICKS_TOKEN")
@@ -105,6 +108,14 @@ with DAG(
     gcp_conn_id="google_cloud_default",
     project_id="affable-alpha-506516-r7",
 )
+    run_data_science = CloudRunExecuteJobOperator(
+    task_id="run_data_science",
+    project_id="affable-alpha-506516-r7",
+    region="us-central1",
+    job_name="epidemiological-ds-modeling",
+    gcp_conn_id="google_cloud_default",
+    deferrable=False,
+)
 
-    [inmet, sinan] >> gold >> load_gold_bigquery
+    [inmet, sinan] >> gold >> load_gold_bigquery >> run_data_science
     
