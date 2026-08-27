@@ -12,6 +12,9 @@ from epidemiological_agent.tools.bigquery_tools import (
     query_epidemiological_data,
     get_total_cases
 )
+from epidemiological_agent.rag.vector_store import (
+    search_knowledge,
+)
 
 @tool
 def epidemiological_data_tool(
@@ -145,3 +148,37 @@ def total_cases_tool(
     )
 
     return str(total)
+
+@tool
+def retrieve_knowledge_tool(
+    query: str,
+) -> str:
+    """
+    Search the project knowledge base.
+
+    Use this tool for questions about:
+    - modeling methodology
+    - statistical metrics
+    - Negative Binomial regression
+    - model limitations
+    - data leakage
+    - lags
+    - interpretation of predictions
+    - association versus causality
+    - project modeling decisions
+    """
+
+    docs = search_knowledge(
+        query=query,
+        k=4,
+    )
+
+    if not docs:
+        return "No relevant project documentation was found."
+
+    context = "\n\n---\n\n".join(
+        doc.page_content
+        for doc in docs
+    )
+
+    return context

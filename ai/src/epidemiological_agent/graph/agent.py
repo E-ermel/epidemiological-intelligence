@@ -14,6 +14,7 @@ from epidemiological_agent.tools.llm_tools import (
     model_metrics_tool,
     model_predictions_tool,
     municipality_model_metrics_tool,
+    retrieve_knowledge_tool,
 )
 
 tools = [
@@ -22,6 +23,7 @@ tools = [
     model_metrics_tool,
     model_predictions_tool,
     municipality_model_metrics_tool,
+    retrieve_knowledge_tool,
 ]
 
 llm = ChatOpenAI(

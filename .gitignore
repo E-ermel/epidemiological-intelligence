@@ -29,3 +29,4 @@ artifacts
 *.md
 
 ai/src/epidemiological_agent/notebook_test.ipynb
+ai/chroma_db/
