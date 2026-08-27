@@ -17,6 +17,8 @@ from epidemiological_agent.graph.routing import (
     should_continue,
 )
 
+from langgraph.checkpoint.memory import MemorySaver
+
 graph_builder = StateGraph(
     AgentState
 )
@@ -50,4 +52,9 @@ graph_builder.add_edge(
     "agent"
 )
 
-agent_graph = graph_builder.compile()
+memory = MemorySaver()
+
+agent_graph = graph_builder.compile(
+    checkpointer=memory
+)
+

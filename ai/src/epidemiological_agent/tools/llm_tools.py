@@ -1,5 +1,5 @@
 import json
-
+import logging
 from langchain_core.tools import tool
 from google.api_core.exceptions import GoogleAPIError
 
@@ -19,6 +19,8 @@ from epidemiological_agent.rag.vector_store import (
 from epidemiological_agent.tools.tool_errors import (
     tool_error_response,
 )
+
+logger = logging.getLogger(__name__)
 
 @tool
 def epidemiological_data_tool(
@@ -58,13 +60,7 @@ def epidemiological_data_tool(
 def model_metrics_tool(
     disease: str,
 ) -> str:
-    """
-    Return evaluation metrics for a disease model.
-
-    Includes baseline and final model metrics such as
-    MAE, RMSE, R2 and WAPE.
-    """
-
+    
     try:
         metrics = get_model_metrics(
             disease
@@ -76,6 +72,11 @@ def model_metrics_tool(
         )
 
     except FileNotFoundError:
+        logger.warning(
+            "Model metrics artifact not found | disease=%s",
+            disease,
+        )
+
         return tool_error_response(
             source="gcs",
             error_type="artifact_not_found",
@@ -86,15 +87,20 @@ def model_metrics_tool(
         )
 
     except GoogleAPIError:
+        logger.exception(
+            "Failed to access model metrics in GCS | disease=%s",
+            disease,
+        )
+
         return tool_error_response(
             source="gcs",
             error_type="storage_unavailable",
             message=(
                 "Não foi possível acessar os artefatos "
-                "do modelo no GCS."
+                "dos modelos no GCS."
             ),
         )
-    
+        
 @tool
 def municipality_model_metrics_tool(
     disease: str,
@@ -155,12 +161,6 @@ def total_cases_tool(
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> str:
-    """
-    Return the total observed number of cases using SUM(cases).
-
-    ALWAYS use this tool when the user asks for the total
-    number of observed cases in a period.
-    """
 
     try:
         total = get_total_cases(
@@ -172,34 +172,28 @@ def total_cases_tool(
 
         return str(total)
 
-    except Exception:
+    except GoogleAPIError:
+        logger.exception(
+            (
+                "BigQuery query failed in total_cases_tool | "
+                "disease=%s | municipality=%s"
+            ),
+            disease,
+            municipality,
+        )
+
         return tool_error_response(
             source="bigquery",
             error_type="query_failed",
             message=(
-                "Não foi possível consultar o total de casos "
-                "no BigQuery."
+                "Não foi possível consultar o total "
+                "de casos no BigQuery."
             ),
         )
-
 @tool
 def retrieve_knowledge_tool(
     query: str,
 ) -> str:
-    """
-    Search the project knowledge base.
-
-    Use this tool for questions about:
-    - modeling methodology
-    - statistical metrics
-    - Negative Binomial regression
-    - model limitations
-    - data leakage
-    - lags
-    - interpretation of predictions
-    - association versus causality
-    - project modeling decisions
-    """
 
     try:
         docs = search_knowledge(
@@ -208,12 +202,17 @@ def retrieve_knowledge_tool(
         )
 
         if not docs:
+            logger.info(
+                "No RAG documents found for query"
+            )
+
             return json.dumps(
                 {
                     "status": "not_found",
+                    "source": "rag",
                     "message": (
-                        "Nenhum conteúdo metodológico relevante "
-                        "foi encontrado."
+                        "Nenhum conteúdo metodológico "
+                        "relevante foi encontrado."
                     ),
                 },
                 ensure_ascii=False,
@@ -225,6 +224,10 @@ def retrieve_knowledge_tool(
         )
 
     except Exception:
+        logger.exception(
+            "RAG retrieval failed"
+        )
+
         return tool_error_response(
             source="rag",
             error_type="retrieval_failed",
