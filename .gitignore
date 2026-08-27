@@ -30,3 +30,4 @@ artifacts
 
 ai/src/epidemiological_agent/notebook_test.ipynb
 ai/chroma_db/
+ai/src/epidemiological_agent/graph/agent.py
