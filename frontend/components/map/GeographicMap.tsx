@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { geoMercator, geoPath } from "d3-geo";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { GeoArea, MapBubble, MapLevel } from "@/types/map";
-import { RS_CONTOUR_PATH, RS_CONTOUR_VIEWBOX } from "@/mocks/geography";
+import { RS_MAP_VIEWBOX } from "@/mocks/geography";
 import { IBGE_CODAREA_TO_UF } from "@/components/map/ibgeStateCodes";
 import { formatNumber } from "@/lib/utils";
 import brazilStatesGeoJson from "@/data/geo/brasil-uf.json";
@@ -15,10 +15,11 @@ import brazilStatesGeoJson from "@/data/geo/brasil-uf.json";
  * state is selected live in the parent's state, not inside this
  * component -- see components/map/OverviewMap.tsx.
  *
- * Country level renders the real state boundaries (data/geo/brasil-uf.json,
- * from IBGE) as a choropleth. State level (today, only RS) still uses a
- * stylized contour + municipality markers -- see the Fase 2 plan for why
- * municipality-level real polygons weren't pursued.
+ * Both levels render real boundaries from data/geo/brasil-uf.json (IBGE):
+ * country level as a 27-state choropleth, state level (today, only RS) as
+ * a single extracted-and-refit polygon used as the backdrop for
+ * municipality markers -- see the Fase 2 plan for why municipality-level
+ * real polygons weren't pursued (curated marker positions instead).
  */
 
 const COUNTRY_VIEWBOX_WIDTH = 400;
@@ -36,6 +37,20 @@ const STATE_PROJECTION = geoMercator().fitSize(
   STATES_GEOJSON
 );
 const STATE_PATH_GENERATOR = geoPath(STATE_PROJECTION);
+
+const [RS_VIEWBOX_MIN_X, RS_VIEWBOX_MIN_Y, RS_VIEWBOX_WIDTH, RS_VIEWBOX_HEIGHT] = RS_MAP_VIEWBOX
+  .split(" ")
+  .map(Number);
+
+const RS_FEATURE = STATES_GEOJSON.features.find(
+  (feature: StateFeature) => IBGE_CODAREA_TO_UF[feature.properties.codarea] === "RS"
+);
+
+const RS_PROJECTION = RS_FEATURE
+  ? geoMercator().fitSize([RS_VIEWBOX_WIDTH, RS_VIEWBOX_HEIGHT], RS_FEATURE)
+  : null;
+const RS_PATH_GENERATOR = RS_PROJECTION ? geoPath(RS_PROJECTION) : null;
+const RS_PATH_D = RS_FEATURE && RS_PATH_GENERATOR ? (RS_PATH_GENERATOR(RS_FEATURE) ?? undefined) : undefined;
 
 interface GeographicMapProps {
   level: MapLevel;
@@ -123,7 +138,7 @@ export function GeographicMap({
     );
   }
 
-  // State level (RS): stylized contour + municipality markers.
+  // State level (RS): real polygon backdrop + municipality markers.
   const maxCases = Math.max(1, ...bubbles.filter((b) => b.hasData).map((b) => b.cases));
 
   function radiusFor(bubble: MapBubble) {
@@ -137,23 +152,22 @@ export function GeographicMap({
   return (
     <div className="relative">
       <svg
-        viewBox={RS_CONTOUR_VIEWBOX}
+        viewBox={RS_MAP_VIEWBOX}
         className="w-full"
         style={{ maxHeight: 380 }}
         role="img"
         aria-label={`Mapa de ${stateCode}`}
       >
         <path
-          d={RS_CONTOUR_PATH}
+          d={RS_PATH_D}
           fill="var(--color-primary-50)"
           stroke="var(--color-primary-100)"
           strokeWidth={2}
         />
 
         {bubbles.map((bubble) => {
-          const [minX, minY, w, h] = RS_CONTOUR_VIEWBOX.split(" ").map(Number);
-          const cx = minX + (bubble.x / 100) * w;
-          const cy = minY + (bubble.y / 100) * h;
+          const cx = RS_VIEWBOX_MIN_X + (bubble.x / 100) * RS_VIEWBOX_WIDTH;
+          const cy = RS_VIEWBOX_MIN_Y + (bubble.y / 100) * RS_VIEWBOX_HEIGHT;
           const isClickable = bubble.hasData && Boolean(onSelectBubble);
 
           return (

@@ -14,13 +14,14 @@ import type { GeoPosition } from "@/types/map";
  *
  * The country-level view no longer uses a stylized contour or curated
  * state positions -- it renders the real state boundaries from
- * data/geo/brasil-uf.json (see components/map/GeographicMap.tsx).
+ * data/geo/brasil-uf.json (see components/map/GeographicMap.tsx),
+ * which is also where the real RS polygon used as the state-level
+ * backdrop comes from now. This viewBox is still needed, though: it's
+ * the coordinate space the municipality bubble x/y percentages below
+ * are positioned within.
  */
 
-export const RS_CONTOUR_VIEWBOX = "0 0 400 300";
-export const RS_CONTOUR_PATH =
-  "M40,60 L120,30 L220,25 L300,50 L360,90 L380,140 L350,190 " +
-  "L320,230 L260,260 L200,270 L140,250 L90,220 L50,170 L30,110 Z";
+export const RS_MAP_VIEWBOX = "0 0 400 300";
 
 /**
  * Rio Grande do Sul municipalities, matched against the 27 that
