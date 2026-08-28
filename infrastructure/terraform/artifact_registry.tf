@@ -1,3 +1,10 @@
+resource "google_artifact_registry_repository" "de" {
+  location      = var.region
+  repository_id = var.de_repository_id
+  description   = "Docker images for Epidemiological Intelligence Data Engineering"
+  format        = "DOCKER"
+}
+
 resource "google_project_service" "artifact_registry_api" {
   project = var.project_id
   service = "artifactregistry.googleapis.com"
@@ -15,4 +22,9 @@ resource "google_artifact_registry_repository" "data_science" {
   depends_on = [
     google_project_service.artifact_registry_api
   ]
+}
+
+resource "google_service_account" "ai" {
+  account_id   = "epidemiological-ai-sa"
+  display_name = "Epidemiological Intelligence AI"
 }
