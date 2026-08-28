@@ -23,7 +23,7 @@ export function DiseaseDistributionChart({ data }: { data: DiseaseDistributionSl
           ))}
         </Pie>
         <Tooltip
-          formatter={(value) => [formatNumber(Number(value)), "Casos"]}
+          formatter={(value, name) => [formatNumber(Number(value)), name]}
           contentStyle={{
             borderRadius: 12,
             border: "1px solid var(--color-border)",
