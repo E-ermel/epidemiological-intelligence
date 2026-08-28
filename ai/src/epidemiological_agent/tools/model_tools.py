@@ -155,6 +155,41 @@ def get_model_metrics(
     return json.loads(content)
 
 
+def get_model_metadata(
+    disease: str,
+) -> dict:
+    """
+    Read metadata.json for the active model version (disease,
+    model_version, run_id, trained_at, model_type, features,
+    training_period, test_period, metrics) -- everything
+    get_model_metrics() alone doesn't have, since that only reads
+    metrics.json.
+    """
+
+    bucket = _get_bucket()
+
+    blob_path = _get_versioned_artifact_path(
+        disease=disease,
+        filename="metadata.json",
+    )
+
+    blob = bucket.blob(
+        blob_path
+    )
+
+    if not blob.exists():
+        raise FileNotFoundError(
+            f"Metadata not found for disease: "
+            f"{disease}"
+        )
+
+    content = blob.download_as_text(
+        encoding="utf-8"
+    )
+
+    return json.loads(content)
+
+
 def get_predictions(
     disease: str,
 ) -> pd.DataFrame:
