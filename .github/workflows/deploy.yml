@@ -2,26 +2,45 @@ name: Deploy
 
 on:
   workflow_dispatch:
+    inputs:
+      component:
+        description: "Component to deploy"
+        required: true
+        default: "ai"
+        type: choice
+        options:
+          - ai
+          - data-science
+          - data-engineering
+          - all
 
 permissions:
   contents: read
   id-token: write
 
+env:
+  AI_REPOSITORY: epidemiological-intelligence
+  AI_IMAGE: epidemiological-ai
+
+  DS_REPOSITORY: epidemiological-ds
+  DS_IMAGE: modeling
+
+  DE_REPOSITORY: epidemiological-intelligence-de
+  DE_IMAGE: epidemiological-de
+
 jobs:
-  deploy-ai:
-    name: Deploy AI
+  deploy:
+    name: Deploy ${{ inputs.component }}
     runs-on: ubuntu-latest
 
     steps:
-      # ---------------------------------------------------------
-      # 1. Checkout
-      # ---------------------------------------------------------
+      # =========================================================
+      # COMMON
+      # =========================================================
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ---------------------------------------------------------
-      # 2. Validate GitHub configuration
-      # ---------------------------------------------------------
       - name: Validate deployment configuration
         env:
           WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -35,10 +54,8 @@ jobs:
           test -n "$REGION" || (echo "GCP_REGION is missing" && exit 1)
 
           echo "Deployment configuration is present."
+          echo "Selected component: ${{ inputs.component }}"
 
-      # ---------------------------------------------------------
-      # 3. Authenticate to GCP using Workload Identity Federation
-      # ---------------------------------------------------------
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
         with:
@@ -46,52 +63,42 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
-      # ---------------------------------------------------------
-      # 4. Setup gcloud
-      # ---------------------------------------------------------
       - name: Setup Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # ---------------------------------------------------------
-      # 5. Authenticate Docker against Artifact Registry
-      # ---------------------------------------------------------
       - name: Configure Docker authentication
         run: |
           gcloud auth configure-docker \
             ${{ vars.GCP_REGION }}-docker.pkg.dev \
             --quiet
 
-      # ---------------------------------------------------------
-      # 6. Setup Python
-      # ---------------------------------------------------------
-      - name: Setup Python
+      # =========================================================
+      # AI
+      # =========================================================
+
+      - name: Setup Python for AI
+        if: ${{ inputs.component == 'ai' || inputs.component == 'all' }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      # ---------------------------------------------------------
-      # 7. Install AI dependencies
-      # ---------------------------------------------------------
       - name: Install AI dependencies
+        if: ${{ inputs.component == 'ai' || inputs.component == 'all' }}
         working-directory: ./ai
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # ---------------------------------------------------------
-      # 8. Build RAG vector store
-      # ---------------------------------------------------------
       - name: Build RAG vector store
+        if: ${{ inputs.component == 'ai' || inputs.component == 'all' }}
         working-directory: ./ai
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           python build_rag.py
 
-      # ---------------------------------------------------------
-      # 9. Verify Chroma database
-      # ---------------------------------------------------------
       - name: Verify Chroma database
+        if: ${{ inputs.component == 'ai' || inputs.component == 'all' }}
         working-directory: ./ai
         run: |
           test -d chroma_db || (echo "chroma_db was not generated" && exit 1)
@@ -99,38 +106,30 @@ jobs:
 
           echo "Chroma vector store generated successfully."
 
-      # ---------------------------------------------------------
-      # 10. Build Docker image
-      # ---------------------------------------------------------
       - name: Build AI Docker image
+        if: ${{ inputs.component == 'ai' || inputs.component == 'all' }}
         run: |
           docker build \
-            -t ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/epidemiological-intelligence/epidemiological-ai:${{ github.sha }} \
+            -t ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.AI_REPOSITORY }}/${{ env.AI_IMAGE }}:${{ github.sha }} \
             ./ai
 
-      # ---------------------------------------------------------
-      # 11. Push image to Artifact Registry
-      # ---------------------------------------------------------
       - name: Push AI Docker image
+        if: ${{ inputs.component == 'ai' || inputs.component == 'all' }}
         run: |
           docker push \
-            ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/epidemiological-intelligence/epidemiological-ai:${{ github.sha }}
+            ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.AI_REPOSITORY }}/${{ env.AI_IMAGE }}:${{ github.sha }}
 
-      # ---------------------------------------------------------
-      # 12. Deploy new image to Cloud Run
-      # ---------------------------------------------------------
       - name: Deploy AI to Cloud Run
+        if: ${{ inputs.component == 'ai' || inputs.component == 'all' }}
         run: |
           gcloud run services update epidemiological-ai \
             --project=${{ vars.GCP_PROJECT_ID }} \
             --region=${{ vars.GCP_REGION }} \
-            --image=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/epidemiological-intelligence/epidemiological-ai:${{ github.sha }} \
+            --image=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.AI_REPOSITORY }}/${{ env.AI_IMAGE }}:${{ github.sha }} \
             --quiet
 
-      # ---------------------------------------------------------
-      # 13. Post-deployment health check
-      # ---------------------------------------------------------
-      - name: Health check
+      - name: AI health check
+        if: ${{ inputs.component == 'ai' || inputs.component == 'all' }}
         run: |
           SERVICE_URL=$(gcloud run services describe epidemiological-ai \
             --project=${{ vars.GCP_PROJECT_ID }} \
@@ -155,5 +154,75 @@ jobs:
             sleep 10
           done
 
-          echo "Health check failed."
+          echo "AI health check failed."
           exit 1
+
+      # =========================================================
+      # DATA SCIENCE
+      # =========================================================
+
+      - name: Build Data Science Docker image
+        if: ${{ inputs.component == 'data-science' || inputs.component == 'all' }}
+        run: |
+          docker build \
+            -t ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DS_REPOSITORY }}/${{ env.DS_IMAGE }}:${{ github.sha }} \
+            ./data_science
+
+      - name: Push Data Science Docker image
+        if: ${{ inputs.component == 'data-science' || inputs.component == 'all' }}
+        run: |
+          docker push \
+            ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DS_REPOSITORY }}/${{ env.DS_IMAGE }}:${{ github.sha }}
+
+      - name: Deploy Data Science Cloud Run Job
+        if: ${{ inputs.component == 'data-science' || inputs.component == 'all' }}
+        run: |
+          gcloud run jobs update epidemiological-ds-modeling \
+            --project=${{ vars.GCP_PROJECT_ID }} \
+            --region=${{ vars.GCP_REGION }} \
+            --image=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DS_REPOSITORY }}/${{ env.DS_IMAGE }}:${{ github.sha }} \
+            --quiet
+
+      # =========================================================
+      # DATA ENGINEERING
+      # =========================================================
+
+      - name: Build Data Engineering Docker image
+        if: ${{ inputs.component == 'data-engineering' || inputs.component == 'all' }}
+        run: |
+          docker build \
+            -t ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DE_REPOSITORY }}/${{ env.DE_IMAGE }}:${{ github.sha }} \
+            ./de
+
+      - name: Push Data Engineering Docker image
+        if: ${{ inputs.component == 'data-engineering' || inputs.component == 'all' }}
+        run: |
+          docker push \
+            ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DE_REPOSITORY }}/${{ env.DE_IMAGE }}:${{ github.sha }}
+
+      - name: Deploy INMET Cloud Run Job
+        if: ${{ inputs.component == 'data-engineering' || inputs.component == 'all' }}
+        run: |
+          gcloud run jobs update epidemiological-de-inmet \
+            --project=${{ vars.GCP_PROJECT_ID }} \
+            --region=${{ vars.GCP_REGION }} \
+            --image=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DE_REPOSITORY }}/${{ env.DE_IMAGE }}:${{ github.sha }} \
+            --quiet
+
+      - name: Deploy SINAN Cloud Run Job
+        if: ${{ inputs.component == 'data-engineering' || inputs.component == 'all' }}
+        run: |
+          gcloud run jobs update epidemiological-de-sinan \
+            --project=${{ vars.GCP_PROJECT_ID }} \
+            --region=${{ vars.GCP_REGION }} \
+            --image=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DE_REPOSITORY }}/${{ env.DE_IMAGE }}:${{ github.sha }} \
+            --quiet
+
+      - name: Deploy GOLD Cloud Run Job
+        if: ${{ inputs.component == 'data-engineering' || inputs.component == 'all' }}
+        run: |
+          gcloud run jobs update epidemiological-de-gold \
+            --project=${{ vars.GCP_PROJECT_ID }} \
+            --region=${{ vars.GCP_REGION }} \
+            --image=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DE_REPOSITORY }}/${{ env.DE_IMAGE }}:${{ github.sha }} \
+            --quiet
