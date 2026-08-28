@@ -3,6 +3,7 @@ import type {
   CaseCurvePoint,
   OverviewMetrics,
 } from "@/types/epidemiology";
+import type { EpidemiologicalDataFilters, EpidemiologicalRecord } from "@/types/data";
 import type { MapLevel } from "@/types/map";
 import type { ModelMetadata, ObservedVsPredictedPoint } from "@/types/model";
 
@@ -146,4 +147,16 @@ export function getModelPredictions(disease: string, municipality?: string) {
   return request<ObservedVsPredictedPoint[]>(
     `/models/${encodeURIComponent(disease)}/predictions${query}`
   );
+}
+
+/** Maps 1:1 to GET /data?disease=&municipality=&start_date=&end_date=. */
+export function getEpidemiologicalData(filters: EpidemiologicalDataFilters) {
+  const params = new URLSearchParams();
+  if (filters.disease) params.set("disease", filters.disease);
+  if (filters.municipality) params.set("municipality", filters.municipality);
+  if (filters.startDate) params.set("start_date", filters.startDate);
+  if (filters.endDate) params.set("end_date", filters.endDate);
+
+  const query = params.toString();
+  return request<EpidemiologicalRecord[]>(`/data${query ? `?${query}` : ""}`);
 }

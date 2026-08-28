@@ -43,7 +43,7 @@ export default async function OverviewPage() {
         <MetricCard label="Doenças monitoradas" value={String(metrics.diseaseCount)} icon={Stethoscope} />
         <MetricCard
           label="Período"
-          value={`${new Date(metrics.periodStart).getFullYear()}–${new Date(metrics.periodEnd).getFullYear()}`}
+          value={`${new Date(metrics.periodStart).getUTCFullYear()}–${new Date(metrics.periodEnd).getUTCFullYear()}`}
           icon={CalendarRange}
         />
       </div>
