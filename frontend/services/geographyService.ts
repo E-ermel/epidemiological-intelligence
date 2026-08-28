@@ -1,6 +1,6 @@
-import type { MapBubble, MapLevel } from "@/types/map";
+import type { GeoArea, MapBubble } from "@/types/map";
 import { getGeo } from "@/services/api";
-import { BRAZIL_STATE_BUBBLES, RS_MUNICIPALITY_BUBBLES } from "@/mocks/geography";
+import { RS_MUNICIPALITY_BUBBLES } from "@/mocks/geography";
 
 /**
  * The Gold table stores municipality names with diacritics stripped
@@ -16,58 +16,46 @@ function normalizeMunicipalityName(name: string): string {
 }
 
 /**
- * GET /geo/{level} returns real case counts ({id, name, cases, hasData})
- * but no x/y -- the API has no business knowing pixel positions. This
- * merges that real data with the curated position lookup in
- * mocks/geography.ts (still real municipality names/state codes, just
- * hand-placed positions -- see that file's docstring). A municipality
- * the API returns that isn't in the curated list has nowhere to be
- * drawn and is dropped, not invented a position for.
+ * GET /geo/country's real case data, straight through -- no position
+ * merge needed here. The real polygon (data/geo/brasil-uf.json,
+ * rendered by GeographicMap) supplies the position now, keyed by
+ * IBGE codarea -> sigla (components/map/ibgeStateCodes.ts), not by a
+ * curated x/y like the old bubble map needed.
  */
-export async function getMapBubbles(level: MapLevel, stateCode?: string): Promise<MapBubble[]> {
-  const areas = await getGeo(level, stateCode);
+export async function getCountryAreas(): Promise<GeoArea[]> {
+  return getGeo("country");
+}
 
-  if (level === "country") {
-    const positionById = new Map(BRAZIL_STATE_BUBBLES.map((b) => [b.id, b]));
+/**
+ * GET /geo/state?state=RS's real case counts, merged with the curated
+ * x/y position lookup in mocks/geography.ts -- municipalities are
+ * still drawn as markers over the real RS polygon backdrop, not as
+ * their own real polygons (see the Fase 2 plan for why). A
+ * municipality the API returns that isn't in the curated list has
+ * nowhere to be drawn and is dropped, not invented a position for.
+ */
+export async function getMunicipalityBubbles(stateCode: string): Promise<MapBubble[]> {
+  if (stateCode !== "RS") return [];
 
-    return areas.flatMap((area) => {
-      const position = positionById.get(area.id);
-      if (!position) return [];
+  const areas = await getGeo("state", stateCode);
 
-      return [
-        {
-          id: area.id,
-          name: area.name,
-          x: position.x,
-          y: position.y,
-          cases: area.cases,
-          hasData: area.hasData,
-        },
-      ];
-    });
-  }
+  const positionByName = new Map(
+    RS_MUNICIPALITY_BUBBLES.map((b) => [normalizeMunicipalityName(b.name), b])
+  );
 
-  if (stateCode === "RS") {
-    const positionByName = new Map(
-      RS_MUNICIPALITY_BUBBLES.map((b) => [normalizeMunicipalityName(b.name), b])
-    );
+  return areas.flatMap((area) => {
+    const position = positionByName.get(normalizeMunicipalityName(area.name));
+    if (!position) return [];
 
-    return areas.flatMap((area) => {
-      const position = positionByName.get(normalizeMunicipalityName(area.name));
-      if (!position) return [];
-
-      return [
-        {
-          id: position.id,
-          name: area.name,
-          x: position.x,
-          y: position.y,
-          cases: area.cases,
-          hasData: area.hasData,
-        },
-      ];
-    });
-  }
-
-  return [];
+    return [
+      {
+        id: position.id,
+        name: area.name,
+        x: position.x,
+        y: position.y,
+        cases: area.cases,
+        hasData: area.hasData,
+      },
+    ];
+  });
 }

@@ -4,7 +4,7 @@ import type {
   OverviewMetrics,
 } from "@/types/epidemiology";
 import type { EpidemiologicalDataFilters, EpidemiologicalRecord } from "@/types/data";
-import type { MapLevel } from "@/types/map";
+import type { GeoArea, MapLevel } from "@/types/map";
 import type { ModelMetadata, ObservedVsPredictedPoint } from "@/types/model";
 
 /**
@@ -69,13 +69,6 @@ export function getHealth() {
 
 /**
  * Maps 1:1 to POST /chat in ai/src/epidemiological_agent/api/app.py.
- * This is the only endpoint in this file that isn't a mock -- it calls
- * the real LangGraph agent.
- *
- * Known limitation: the FastAPI app does not configure CORS
- * (no CORSMiddleware in api/app.py), so calling this from a browser
- * origin other than the API's own will currently fail. Needs a backend
- * change before this works end-to-end outside of same-origin setups.
  */
 export function sendChatMessage(payload: ChatRequest) {
   return request<ChatResponse>("/chat", {
@@ -104,13 +97,6 @@ export interface ApiOverviewResponse {
   diseaseDistribution: ApiDiseaseDistributionSlice[];
 }
 
-export interface ApiGeoArea {
-  id: string;
-  name: string;
-  cases: number;
-  hasData: boolean;
-}
-
 export interface ApiStudySummary {
   disease: string;
   totalCases: number;
@@ -126,7 +112,7 @@ export function getOverview() {
 /** Maps 1:1 to GET /geo/{level}?state=. */
 export function getGeo(level: MapLevel, state?: string) {
   const query = state ? `?state=${encodeURIComponent(state)}` : "";
-  return request<ApiGeoArea[]>(`/geo/${level}${query}`);
+  return request<GeoArea[]>(`/geo/${level}${query}`);
 }
 
 /** Maps 1:1 to GET /studies. */

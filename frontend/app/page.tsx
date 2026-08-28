@@ -5,7 +5,7 @@ import { EpidemiologicalChart } from "@/components/charts/EpidemiologicalChart";
 import { DiseaseDistributionChart } from "@/components/charts/DiseaseDistributionChart";
 import { OverviewMap } from "@/components/map/OverviewMap";
 import { getOverviewData } from "@/services/overviewService";
-import { getMapBubbles } from "@/services/geographyService";
+import { getCountryAreas, getMunicipalityBubbles } from "@/services/geographyService";
 import { formatDate, formatNumber } from "@/lib/utils";
 
 // Data comes from a live backend now, not a build-time mock -- must
@@ -13,11 +13,11 @@ import { formatDate, formatNumber } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
-  const [{ metrics, caseCurve, diseaseDistribution: distribution }, countryBubbles, rsBubbles] =
+  const [{ metrics, caseCurve, diseaseDistribution: distribution }, countryAreas, rsBubbles] =
     await Promise.all([
       getOverviewData(),
-      getMapBubbles("country"),
-      getMapBubbles("state", "RS"),
+      getCountryAreas(),
+      getMunicipalityBubbles("RS"),
     ]);
 
   return (
@@ -78,7 +78,7 @@ export default async function OverviewPage() {
           <p className="mb-2 text-xs text-muted">
             Casos por região. Clique em um estado para explorar os municípios.
           </p>
-          <OverviewMap countryBubbles={countryBubbles} stateBubbles={{ RS: rsBubbles }} />
+          <OverviewMap countryAreas={countryAreas} stateBubbles={{ RS: rsBubbles }} />
         </Card>
       </div>
     </div>

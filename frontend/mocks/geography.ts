@@ -3,43 +3,24 @@ import type { GeoPosition } from "@/types/map";
 /**
  * Case counts here are no longer used -- GET /geo/{level} (via
  * services/geographyService.ts) is real now. What's still mock/curated
- * here is the POSITION data: x/y percentage coordinates for a small,
- * hand-picked set of states/municipalities, since there's no real
- * geographic projection backing this yet (see the Fase 2 plan for
- * replacing the country-level contour with real state boundaries).
- * geographyService.ts joins these positions onto the real API data by
- * id (states) or name (RS municipalities); anything the API returns
- * that isn't in this curated list has nowhere to be drawn and is
- * dropped rather than given an invented position.
+ * here is the POSITION data for RS municipality markers: x/y percentage
+ * coordinates, since there's no real municipality-level projection
+ * backing this (see the Fase 2 plan for why the map stays at real
+ * state-level polygons, with municipalities as markers rather than
+ * their own real polygons). geographyService.ts joins these positions
+ * onto the real API data by name; anything the API returns that isn't
+ * in this curated list has nowhere to be drawn and is dropped rather
+ * than given an invented position.
  *
- * These SVG paths are deliberately simplified, stylized contours --
- * NOT real cartographic boundaries.
+ * The country-level view no longer uses a stylized contour or curated
+ * state positions -- it renders the real state boundaries from
+ * data/geo/brasil-uf.json (see components/map/GeographicMap.tsx).
  */
-
-export const BRAZIL_CONTOUR_VIEWBOX = "0 0 400 420";
-export const BRAZIL_CONTOUR_PATH =
-  "M120,20 L220,15 L280,45 L320,90 L340,140 L330,190 L300,220 " +
-  "L310,260 L290,300 L260,330 L230,350 L200,400 L170,360 L150,330 " +
-  "L110,320 L90,280 L70,240 L60,190 L50,140 L70,90 L100,50 Z";
 
 export const RS_CONTOUR_VIEWBOX = "0 0 400 300";
 export const RS_CONTOUR_PATH =
   "M40,60 L120,30 L220,25 L300,50 L360,90 L380,140 L350,190 " +
   "L320,230 L260,260 L200,270 L140,250 L90,220 L50,170 L30,110 Z";
-
-/**
- * Approximate relative positions of a handful of states, for the
- * country-level view. Only states with real pipeline data are
- * hasData: true; the rest render neutral/disabled, per spec.
- */
-export const BRAZIL_STATE_BUBBLES: GeoPosition[] = [
-  { id: "RS", name: "Rio Grande do Sul", x: 46, y: 88 },
-  { id: "SC", name: "Santa Catarina", x: 52, y: 78 },
-  { id: "PR", name: "Paraná", x: 54, y: 66 },
-  { id: "SP", name: "São Paulo", x: 58, y: 54 },
-  { id: "RJ", name: "Rio de Janeiro", x: 68, y: 52 },
-  { id: "MG", name: "Minas Gerais", x: 62, y: 42 },
-];
 
 /**
  * Rio Grande do Sul municipalities, matched against the 27 that

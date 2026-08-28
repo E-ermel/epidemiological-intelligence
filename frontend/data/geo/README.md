@@ -15,6 +15,25 @@
   in `components/map/ibgeStateCodes.ts` (a small, stable, official
   table -- doesn't need to live in this fetched file).
 
-To refresh this file, re-run the `curl` above and diff before
-committing -- IBGE's malha URLs are stable but not guaranteed to never
-change.
+**Ring winding matters and IBGE's export needs correcting.** `d3-geo`
+works in spherical coordinates and needs each polygon's exterior ring
+wound clockwise in plain (lon, lat) terms (this is the actual
+right-hand rule once you account for the sphere's outward normal --
+counterclockwise-in-planar-terms, which is what a naive shoelace check
+suggests, is backwards and makes `d3.geoBounds`/`geoPath.bounds()`
+silently fall back to the whole globe, `[[-180,-90],[180,90]]`, for
+every feature). IBGE's export comes back counterclockwise. Fixed once
+here via `@mapbox/geojson-rewind` (devDependency) with `outer: true`:
+
+```js
+const rewind = require('@mapbox/geojson-rewind');
+const fs = require('fs');
+const data = JSON.parse(fs.readFileSync('data/geo/brasil-uf.json', 'utf8'));
+rewind(data, true); // true = force exterior rings clockwise (planar)
+fs.writeFileSync('data/geo/brasil-uf.json', JSON.stringify(data));
+```
+
+To refresh this file: re-run the `curl` above, re-run the rewind step
+above, and diff before committing -- IBGE's malha URLs are stable but
+not guaranteed to never change, and the winding direction needs
+reapplying every time since IBGE always exports counterclockwise.

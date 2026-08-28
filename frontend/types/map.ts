@@ -1,16 +1,30 @@
 export type MapLevel = "country" | "state";
 
 /**
- * A single point rendered on the map: a state (country level) or a
- * municipality (state level). Position is a percentage (0-100) within the
- * simplified contour's viewBox, not a real geographic projection -- see
- * mocks/geography.ts for why.
+ * A municipality marker drawn on top of the (real) state-level
+ * boundary. Position is a percentage (0-100) within the state
+ * contour's viewBox, not a real geographic projection -- see
+ * mocks/geography.ts for why. Country-level states no longer use
+ * this -- see GeoArea, rendered as real polygons instead.
  */
 export interface MapBubble {
   id: string;
   name: string;
   x: number;
   y: number;
+  cases: number;
+  hasData: boolean;
+}
+
+/**
+ * A state or municipality's case data with no position -- used at
+ * country level, where the real polygon (data/geo/brasil-uf.json)
+ * supplies the position instead of a curated x/y. Mirrors
+ * GET /geo/{level}'s response exactly.
+ */
+export interface GeoArea {
+  id: string;
+  name: string;
   cases: number;
   hasData: boolean;
 }
