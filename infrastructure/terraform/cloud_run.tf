@@ -187,6 +187,12 @@ resource "google_cloud_run_v2_service" "ai" {
     }
   }
 
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image
+    ]
+  }
+
   depends_on = [
     google_project_service.cloud_run_api,
     google_project_iam_member.ai_bigquery_job_user,
