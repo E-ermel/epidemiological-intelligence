@@ -1,9 +1,21 @@
+import type { DiseaseCode } from "@/types/epidemiology";
 import type { StudySummary } from "@/types/study";
-import { MOCK_STUDIES } from "@/mocks/studies";
+import { getStudiesData } from "@/services/api";
+import { DISEASE_DESCRIPTIONS, DISEASE_LABELS } from "@/lib/constants";
 
-/**
- * TODO: backend endpoint required (e.g. GET /studies). See mocks/studies.ts.
- */
 export async function getStudies(): Promise<StudySummary[]> {
-  return MOCK_STUDIES;
+  const studies = await getStudiesData();
+
+  return studies.map((study) => {
+    const disease = study.disease as DiseaseCode;
+
+    return {
+      disease,
+      label: DISEASE_LABELS[disease] ?? study.disease,
+      description: DISEASE_DESCRIPTIONS[disease] ?? "",
+      totalCases: study.totalCases,
+      municipalityCount: study.municipalityCount,
+      activeModelVersion: study.activeModelVersion,
+    };
+  });
 }

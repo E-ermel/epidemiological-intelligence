@@ -25,3 +25,26 @@ export const DISEASES: { code: DiseaseCode; label: string }[] = [
   { code: "INSUFICIÊNCIA CARDÍACA", label: "Insuficiência Cardíaca" },
   { code: "LEPTOSPIROSE", label: "Leptospirose" },
 ];
+
+export const DISEASE_LABELS: Record<DiseaseCode, string> = Object.fromEntries(
+  DISEASES.map((d) => [d.code, d.label])
+) as Record<DiseaseCode, string>;
+
+/**
+ * Presentation-only copy -- the API has no business generating prose,
+ * so this stays client-side, keyed by the real `disease` code the
+ * API does return (GET /studies).
+ */
+export const DISEASE_DESCRIPTIONS: Record<DiseaseCode, string> = {
+  ASMA: "Casos de asma associados a umidade relativa e ponto de orvalho, com defasagem climática de 1 mês.",
+  "BRONQUITE AGUDA":
+    "Casos de bronquite aguda associados a umidade e precipitação, com defasagem de até 3 meses.",
+  "BRONQUITE CRÔNICA":
+    "Casos de bronquite crônica associados à intensidade de rajadas de vento.",
+  "INFARTO AGUDO DO MIOCÁRDIO":
+    "Casos de infarto associados à velocidade média do vento do mês anterior.",
+  "INSUFICIÊNCIA CARDÍACA":
+    "Casos de insuficiência cardíaca associados a pressão atmosférica e ponto de orvalho.",
+  LEPTOSPIROSE:
+    "Casos de leptospirose associados a precipitação e umidade relativa do mês anterior -- o padrão sazonal mais forte da base.",
+};

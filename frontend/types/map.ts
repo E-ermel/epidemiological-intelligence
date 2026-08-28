@@ -15,6 +15,18 @@ export interface MapBubble {
   hasData: boolean;
 }
 
+/**
+ * A curated x/y position for a state or municipality -- no case data,
+ * since positions come from mocks/geography.ts while case counts come
+ * from the real API. See services/geographyService.ts.
+ */
+export interface GeoPosition {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+}
+
 export interface MapNode {
   level: MapLevel;
   /** e.g. "RS" when level === "state"; undefined at country level. */

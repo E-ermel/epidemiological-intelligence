@@ -6,6 +6,7 @@ import type { DiseaseCode } from "@/types/epidemiology";
 import type { ModelMetadata, ObservedVsPredictedPoint } from "@/types/model";
 import { ModelCard } from "@/components/models/ModelCard";
 import { ModelDetail } from "@/components/models/ModelDetail";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { DISEASES } from "@/lib/constants";
 
 interface ModelsExplorerProps {
@@ -17,7 +18,7 @@ export function ModelsExplorer({ models, observedVsPredictedByDisease }: ModelsE
   const searchParams = useSearchParams();
   const requestedDisease = searchParams.get("disease") as DiseaseCode | null;
 
-  const [selected, setSelected] = useState<DiseaseCode>(
+  const [selected, setSelected] = useState<DiseaseCode | undefined>(
     requestedDisease && models.some((m) => m.disease === requestedDisease)
       ? requestedDisease
       : models[0]?.disease
@@ -29,6 +30,15 @@ export function ModelsExplorer({ models, observedVsPredictedByDisease }: ModelsE
   );
 
   const selectedModel = models.find((model) => model.disease === selected);
+
+  if (models.length === 0) {
+    return (
+      <EmptyState
+        title="Nenhum modelo treinado ainda"
+        description="Assim que o pipeline de Data Science publicar um modelo, ele aparece aqui."
+      />
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

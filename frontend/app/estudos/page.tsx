@@ -2,6 +2,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StudyCard } from "@/components/studies/StudyCard";
 import { getStudies } from "@/services/studiesService";
 
+export const dynamic = "force-dynamic";
+
 export default async function StudiesPage() {
   const studies = await getStudies();
 

@@ -1,29 +1,31 @@
 import type {
   CaseCurvePoint,
+  DiseaseCode,
   DiseaseDistributionSlice,
   OverviewMetrics,
 } from "@/types/epidemiology";
-import {
-  MOCK_CASE_CURVE,
-  MOCK_DISEASE_DISTRIBUTION,
-  MOCK_OVERVIEW_METRICS,
-} from "@/mocks/overview";
+import { getOverview } from "@/services/api";
+import { DISEASE_LABELS } from "@/lib/constants";
 
-/**
- * TODO: backend endpoint required. Replace the mock reads below with
- * calls through services/api.ts (e.g. request<OverviewMetrics>("/overview"))
- * once that endpoint exists -- pages/components call these functions,
- * not the mocks directly, so that swap won't touch any component.
- */
-
-export async function getOverviewMetrics(): Promise<OverviewMetrics> {
-  return MOCK_OVERVIEW_METRICS;
+export interface OverviewData {
+  metrics: OverviewMetrics;
+  caseCurve: CaseCurvePoint[];
+  diseaseDistribution: DiseaseDistributionSlice[];
 }
 
-export async function getCaseCurve(): Promise<CaseCurvePoint[]> {
-  return MOCK_CASE_CURVE;
-}
+export async function getOverviewData(): Promise<OverviewData> {
+  const response = await getOverview();
 
-export async function getDiseaseDistribution(): Promise<DiseaseDistributionSlice[]> {
-  return MOCK_DISEASE_DISTRIBUTION;
+  return {
+    metrics: response.metrics,
+    caseCurve: response.caseCurve,
+    diseaseDistribution: response.diseaseDistribution.map((slice) => {
+      const disease = slice.disease as DiseaseCode;
+      return {
+        ...slice,
+        disease,
+        label: DISEASE_LABELS[disease] ?? slice.disease,
+      };
+    }),
+  };
 }

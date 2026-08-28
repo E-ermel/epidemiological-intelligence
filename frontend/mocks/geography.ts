@@ -1,17 +1,19 @@
-import type { MapBubble } from "@/types/map";
+import type { GeoPosition } from "@/types/map";
 
 /**
- * MOCK DATA. No endpoint exists for geographic aggregates yet.
- * TODO: backend endpoint required (e.g. GET /geo/{level} returning
- * case counts per state or per municipality).
+ * Case counts here are no longer used -- GET /geo/{level} (via
+ * services/geographyService.ts) is real now. What's still mock/curated
+ * here is the POSITION data: x/y percentage coordinates for a small,
+ * hand-picked set of states/municipalities, since there's no real
+ * geographic projection backing this yet (see the Fase 2 plan for
+ * replacing the country-level contour with real state boundaries).
+ * geographyService.ts joins these positions onto the real API data by
+ * id (states) or name (RS municipalities); anything the API returns
+ * that isn't in this curated list has nowhere to be drawn and is
+ * dropped rather than given an invented position.
  *
  * These SVG paths are deliberately simplified, stylized contours --
- * NOT real cartographic boundaries. Per the chosen "bubble map" design
- * (see project decision), the shapes exist only to give visual context;
- * the actual data lives in the bubble positions/sizes, which are
- * approximate percentage coordinates, not a real geographic projection.
- * Swapping in real GeoJSON/TopoJSON boundaries is a possible future
- * upgrade, not required for this first iteration.
+ * NOT real cartographic boundaries.
  */
 
 export const BRAZIL_CONTOUR_VIEWBOX = "0 0 400 420";
@@ -30,31 +32,53 @@ export const RS_CONTOUR_PATH =
  * country-level view. Only states with real pipeline data are
  * hasData: true; the rest render neutral/disabled, per spec.
  */
-export const BRAZIL_STATE_BUBBLES: MapBubble[] = [
-  { id: "RS", name: "Rio Grande do Sul", x: 46, y: 88, cases: 128_430, hasData: true },
-  { id: "SC", name: "Santa Catarina", x: 52, y: 78, cases: 0, hasData: false },
-  { id: "PR", name: "Paraná", x: 54, y: 66, cases: 0, hasData: false },
-  { id: "SP", name: "São Paulo", x: 58, y: 54, cases: 0, hasData: false },
-  { id: "RJ", name: "Rio de Janeiro", x: 68, y: 52, cases: 0, hasData: false },
-  { id: "MG", name: "Minas Gerais", x: 62, y: 42, cases: 0, hasData: false },
+export const BRAZIL_STATE_BUBBLES: GeoPosition[] = [
+  { id: "RS", name: "Rio Grande do Sul", x: 46, y: 88 },
+  { id: "SC", name: "Santa Catarina", x: 52, y: 78 },
+  { id: "PR", name: "Paraná", x: 54, y: 66 },
+  { id: "SP", name: "São Paulo", x: 58, y: 54 },
+  { id: "RJ", name: "Rio de Janeiro", x: 68, y: 52 },
+  { id: "MG", name: "Minas Gerais", x: 62, y: 42 },
 ];
 
 /**
- * Representative Rio Grande do Sul municipalities. Positions are
- * approximate/illustrative (relative placement is roughly right --
- * west/east/north/south -- but not projected from real coordinates).
+ * Rio Grande do Sul municipalities, matched against the 27 that
+ * actually have real data in the Gold table today (verified against
+ * the live GET /geo/state?state=RS response -- an earlier guess at
+ * "the biggest RS cities" only matched 5 of the 27 real ones and
+ * silently dropped the rest). Positions are approximate/illustrative
+ * (relative placement is roughly right -- west/east/north/south --
+ * but not projected from real coordinates). Matching against the API
+ * is accent-insensitive (see normalizeMunicipalityName in
+ * services/geographyService.ts), so the accented names here are just
+ * for readability of this file, not required to match verbatim.
  */
-export const RS_MUNICIPALITY_BUBBLES: MapBubble[] = [
-  { id: "porto-alegre", name: "Porto Alegre", x: 62, y: 62, cases: 24_180, hasData: true },
-  { id: "caxias-do-sul", name: "Caxias do Sul", x: 66, y: 42, cases: 11_920, hasData: true },
-  { id: "pelotas", name: "Pelotas", x: 58, y: 82, cases: 9_540, hasData: true },
-  { id: "santa-maria", name: "Santa Maria", x: 42, y: 52, cases: 8_210, hasData: true },
-  { id: "canoas", name: "Canoas", x: 63, y: 58, cases: 7_640, hasData: true },
-  { id: "novo-hamburgo", name: "Novo Hamburgo", x: 61, y: 50, cases: 6_390, hasData: true },
-  { id: "passo-fundo", name: "Passo Fundo", x: 52, y: 28, cases: 5_980, hasData: true },
-  { id: "rio-grande", name: "Rio Grande", x: 60, y: 92, cases: 5_120, hasData: true },
-  { id: "gravatai", name: "Gravataí", x: 65, y: 56, cases: 4_870, hasData: true },
-  { id: "viamao", name: "Viamão", x: 64, y: 63, cases: 4_310, hasData: true },
-  { id: "alegrete", name: "Alegrete", x: 22, y: 55, cases: 3_260, hasData: true },
-  { id: "uruguaiana", name: "Uruguaiana", x: 12, y: 60, cases: 2_890, hasData: true },
+export const RS_MUNICIPALITY_BUBBLES: GeoPosition[] = [
+  { id: "porto-alegre", name: "Porto Alegre", x: 62, y: 62 },
+  { id: "rio-grande", name: "Rio Grande", x: 60, y: 92 },
+  { id: "passo-fundo", name: "Passo Fundo", x: 52, y: 28 },
+  { id: "santa-maria", name: "Santa Maria", x: 42, y: 52 },
+  { id: "uruguaiana", name: "Uruguaiana", x: 12, y: 60 },
+  { id: "bage", name: "Bagé", x: 25, y: 75 },
+  { id: "bento-goncalves", name: "Bento Gonçalves", x: 66, y: 38 },
+  { id: "cacapava-do-sul", name: "Caçapava do Sul", x: 35, y: 70 },
+  { id: "camaqua", name: "Camaquã", x: 52, y: 78 },
+  { id: "cambara-do-sul", name: "Cambará do Sul", x: 62, y: 15 },
+  { id: "campo-bom", name: "Campo Bom", x: 60, y: 52 },
+  { id: "canela", name: "Canela", x: 64, y: 48 },
+  { id: "cruz-alta", name: "Cruz Alta", x: 44, y: 32 },
+  { id: "erechim", name: "Erechim", x: 56, y: 12 },
+  { id: "frederico-westphalen", name: "Frederico Westphalen", x: 50, y: 10 },
+  { id: "lagoa-vermelha", name: "Lagoa Vermelha", x: 58, y: 22 },
+  { id: "palmeira-das-missoes", name: "Palmeira das Missões", x: 46, y: 22 },
+  { id: "rio-pardo", name: "Rio Pardo", x: 48, y: 62 },
+  { id: "santa-rosa", name: "Santa Rosa", x: 30, y: 18 },
+  { id: "santiago", name: "Santiago", x: 28, y: 45 },
+  { id: "santo-augusto", name: "Santo Augusto", x: 32, y: 20 },
+  { id: "sao-borja", name: "São Borja", x: 14, y: 45 },
+  { id: "soledade", name: "Soledade", x: 48, y: 26 },
+  { id: "teutonia", name: "Teutônia", x: 58, y: 44 },
+  { id: "torres", name: "Torres", x: 70, y: 20 },
+  { id: "tramandai", name: "Tramandaí", x: 66, y: 56 },
+  { id: "vacaria", name: "Vacaria", x: 56, y: 10 },
 ];

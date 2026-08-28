@@ -1,4 +1,10 @@
 import type { ChatRequest, ChatResponse } from "@/types/chat";
+import type {
+  CaseCurvePoint,
+  OverviewMetrics,
+} from "@/types/epidemiology";
+import type { MapLevel } from "@/types/map";
+import type { ModelMetadata, ObservedVsPredictedPoint } from "@/types/model";
 
 /**
  * Single source of truth for the FastAPI base URL. Never hardcode a
@@ -75,4 +81,69 @@ export function sendChatMessage(payload: ChatRequest) {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+/**
+ * Wire shapes for the routes below -- narrower than the frontend types
+ * in types/, since the API doesn't (and shouldn't) know about
+ * presentation-only fields like a disease's Portuguese label or a
+ * study's hand-written description. Each *Service.ts merges these
+ * with local presentation data (lib/constants.ts) into the full type.
+ */
+
+export interface ApiDiseaseDistributionSlice {
+  disease: string;
+  cases: number;
+  shareOfTotalPct: number;
+}
+
+export interface ApiOverviewResponse {
+  metrics: OverviewMetrics;
+  caseCurve: CaseCurvePoint[];
+  diseaseDistribution: ApiDiseaseDistributionSlice[];
+}
+
+export interface ApiGeoArea {
+  id: string;
+  name: string;
+  cases: number;
+  hasData: boolean;
+}
+
+export interface ApiStudySummary {
+  disease: string;
+  totalCases: number;
+  municipalityCount: number;
+  activeModelVersion: string | null;
+}
+
+/** Maps 1:1 to GET /overview. */
+export function getOverview() {
+  return request<ApiOverviewResponse>("/overview");
+}
+
+/** Maps 1:1 to GET /geo/{level}?state=. */
+export function getGeo(level: MapLevel, state?: string) {
+  const query = state ? `?state=${encodeURIComponent(state)}` : "";
+  return request<ApiGeoArea[]>(`/geo/${level}${query}`);
+}
+
+/** Maps 1:1 to GET /studies. */
+export function getStudiesData() {
+  return request<ApiStudySummary[]>("/studies");
+}
+
+/** Maps 1:1 to GET /models. */
+export function getModelsData() {
+  return request<ModelMetadata[]>("/models");
+}
+
+/** Maps 1:1 to GET /models/{disease}/predictions?municipality=. */
+export function getModelPredictions(disease: string, municipality?: string) {
+  const query = municipality
+    ? `?municipality=${encodeURIComponent(municipality)}`
+    : "";
+  return request<ObservedVsPredictedPoint[]>(
+    `/models/${encodeURIComponent(disease)}/predictions${query}`
+  );
 }

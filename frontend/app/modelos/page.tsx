@@ -4,6 +4,8 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ModelsExplorer } from "@/components/models/ModelsExplorer";
 import { getModels, getObservedVsPredicted } from "@/services/modelsService";
 
+export const dynamic = "force-dynamic";
+
 export default async function ModelsPage() {
   const models = await getModels();
 

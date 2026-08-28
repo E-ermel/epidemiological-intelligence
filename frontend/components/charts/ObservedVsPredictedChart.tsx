@@ -5,9 +5,18 @@ import type { ObservedVsPredictedPoint } from "@/types/model";
 import { formatMonth, formatNumber } from "@/lib/utils";
 
 export function ObservedVsPredictedChart({ data }: { data: ObservedVsPredictedPoint[] }) {
+  // The API doesn't guarantee ordering, and the real test period is
+  // long enough (unlike the old 6-point mock) that a fixed interval=0
+  // tick for every point makes the axis unreadable -- preserveStartEnd
+  // + minTickGap lets Recharts space ticks out like EpidemiologicalChart
+  // already does for the (much longer) case curve.
+  const sortedData = [...data].sort((a, b) =>
+    a.referenceDate.localeCompare(b.referenceDate)
+  );
+
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+      <LineChart data={sortedData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid vertical={false} stroke="var(--color-border)" />
 
         <XAxis
@@ -16,7 +25,8 @@ export function ObservedVsPredictedChart({ data }: { data: ObservedVsPredictedPo
           tick={{ fontSize: 12, fill: "var(--color-muted)" }}
           axisLine={false}
           tickLine={false}
-          interval={0}
+          interval="preserveStartEnd"
+          minTickGap={24}
         />
 
         <YAxis

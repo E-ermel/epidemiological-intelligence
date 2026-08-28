@@ -10,7 +10,11 @@ export function StudyCard({ study }: { study: StudySummary }) {
     <Card className="flex h-full flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">{study.label}</h3>
-        <Badge tone="primary">{study.activeModelVersion}</Badge>
+        {study.activeModelVersion ? (
+          <Badge tone="primary">{study.activeModelVersion}</Badge>
+        ) : (
+          <Badge tone="neutral">sem modelo</Badge>
+        )}
       </div>
 
       <p className="flex-1 text-xs leading-relaxed text-muted">{study.description}</p>

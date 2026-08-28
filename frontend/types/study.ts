@@ -6,5 +6,6 @@ export interface StudySummary {
   description: string;
   totalCases: number;
   municipalityCount: number;
-  activeModelVersion: string;
+  /** null when the disease has epidemiological data but no trained model yet. */
+  activeModelVersion: string | null;
 }

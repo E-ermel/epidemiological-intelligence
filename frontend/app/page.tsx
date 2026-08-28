@@ -4,18 +4,21 @@ import { MetricCard } from "@/components/ui/MetricCard";
 import { EpidemiologicalChart } from "@/components/charts/EpidemiologicalChart";
 import { DiseaseDistributionChart } from "@/components/charts/DiseaseDistributionChart";
 import { OverviewMap } from "@/components/map/OverviewMap";
-import { getCaseCurve, getDiseaseDistribution, getOverviewMetrics } from "@/services/overviewService";
+import { getOverviewData } from "@/services/overviewService";
 import { getMapBubbles } from "@/services/geographyService";
 import { formatDate, formatNumber } from "@/lib/utils";
 
+// Data comes from a live backend now, not a build-time mock -- must
+// be fetched per-request, not baked in at `next build` time.
+export const dynamic = "force-dynamic";
+
 export default async function OverviewPage() {
-  const [metrics, caseCurve, distribution, countryBubbles, rsBubbles] = await Promise.all([
-    getOverviewMetrics(),
-    getCaseCurve(),
-    getDiseaseDistribution(),
-    getMapBubbles("country"),
-    getMapBubbles("state", "RS"),
-  ]);
+  const [{ metrics, caseCurve, diseaseDistribution: distribution }, countryBubbles, rsBubbles] =
+    await Promise.all([
+      getOverviewData(),
+      getMapBubbles("country"),
+      getMapBubbles("state", "RS"),
+    ]);
 
   return (
     <div className="flex flex-col gap-6">
