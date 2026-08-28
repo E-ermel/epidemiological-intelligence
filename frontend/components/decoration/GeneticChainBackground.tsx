@@ -100,7 +100,7 @@ export function GeneticChainBackground() {
 
   return (
     <svg
-      className="pointer-events-none fixed inset-0 -z-10 h-full w-full"
+      className="pointer-events-none fixed inset-0 h-full w-full"
       viewBox={`0 0 ${VIEWBOX_SIZE} ${VIEWBOX_SIZE}`}
       preserveAspectRatio="none"
       aria-hidden="true"
