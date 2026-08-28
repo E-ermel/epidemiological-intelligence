@@ -81,7 +81,7 @@ export function DataExplorer() {
           </label>
 
           <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
-            Data inicial
+            Data inicial (opcional)
             <input
               type="date"
               value={startDate}
@@ -91,7 +91,7 @@ export function DataExplorer() {
           </label>
 
           <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
-            Data final
+            Data final (opcional)
             <input
               type="date"
               value={endDate}
@@ -109,6 +109,12 @@ export function DataExplorer() {
             Buscar
           </button>
         </form>
+
+        <p className="mt-3 text-xs text-muted-light">
+          Todos os campos são independentes -- para filtrar só a partir de uma data, preencha
+          apenas &ldquo;Data inicial&rdquo; e deixe &ldquo;Data final&rdquo; em branco (e
+          vice-versa).
+        </p>
       </Card>
 
       <Card>
