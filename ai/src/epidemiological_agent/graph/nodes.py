@@ -1,6 +1,7 @@
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import ToolNode
 
+from epidemiological_agent.config import OPENAI_API_KEY
 from epidemiological_agent.graph.state import AgentState
 from epidemiological_agent.prompts.system_prompt import (
     SYSTEM_PROMPT,
@@ -27,6 +28,7 @@ tools = [
 llm = ChatOpenAI(
     model="gpt-4.1-mini",
     temperature=0,
+    api_key=OPENAI_API_KEY or None,
 )
 
 llm_with_tools = llm.bind_tools(tools)
