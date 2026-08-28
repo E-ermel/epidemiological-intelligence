@@ -2,16 +2,17 @@ export type MapLevel = "country" | "state";
 
 /**
  * A municipality marker drawn on top of the (real) state-level
- * boundary. Position is a percentage (0-100) within the state
- * contour's viewBox, not a real geographic projection -- see
- * mocks/geography.ts for why. Country-level states no longer use
+ * boundary. lat/lon are real coordinates (see GeoPosition), projected
+ * through the same d3-geo projection as the boundary polygon itself
+ * (components/map/GeographicMap.tsx) at render time -- not a
+ * percentage-of-viewBox guess. Country-level states no longer use
  * this -- see GeoArea, rendered as real polygons instead.
  */
 export interface MapBubble {
   id: string;
   name: string;
-  x: number;
-  y: number;
+  lat: number;
+  lon: number;
   cases: number;
   hasData: boolean;
 }
@@ -30,15 +31,19 @@ export interface GeoArea {
 }
 
 /**
- * A curated x/y position for a state or municipality -- no case data,
- * since positions come from mocks/geography.ts while case counts come
- * from the real API. See services/geographyService.ts.
+ * A curated real lat/lon for a municipality -- no case data, since
+ * positions come from mocks/geography.ts while case counts come from
+ * the real API. See services/geographyService.ts. Projected through
+ * the same d3-geo projection as the real RS polygon
+ * (components/map/GeographicMap.tsx), so a marker lands exactly where
+ * that municipality actually is on the real boundary, not an
+ * eyeballed percentage.
  */
 export interface GeoPosition {
   id: string;
   name: string;
-  x: number;
-  y: number;
+  lat: number;
+  lon: number;
 }
 
 export interface MapNode {

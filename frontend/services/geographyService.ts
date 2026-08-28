@@ -28,11 +28,13 @@ export async function getCountryAreas(): Promise<GeoArea[]> {
 
 /**
  * GET /geo/state?state=RS's real case counts, merged with the curated
- * x/y position lookup in mocks/geography.ts -- municipalities are
+ * real lat/lon lookup in mocks/geography.ts -- municipalities are
  * still drawn as markers over the real RS polygon backdrop, not as
- * their own real polygons (see the Fase 2 plan for why). A
- * municipality the API returns that isn't in the curated list has
- * nowhere to be drawn and is dropped, not invented a position for.
+ * their own real polygons (see the Fase 2 plan for why). GeographicMap
+ * projects lat/lon through the same projection as the polygon at
+ * render time. A municipality the API returns that isn't in the
+ * curated list has nowhere to be drawn and is dropped, not invented a
+ * position for.
  */
 export async function getMunicipalityBubbles(stateCode: string): Promise<MapBubble[]> {
   if (stateCode !== "RS") return [];
@@ -51,8 +53,8 @@ export async function getMunicipalityBubbles(stateCode: string): Promise<MapBubb
       {
         id: position.id,
         name: area.name,
-        x: position.x,
-        y: position.y,
+        lat: position.lat,
+        lon: position.lon,
         cases: area.cases,
         hasData: area.hasData,
       },

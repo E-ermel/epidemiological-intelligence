@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { geoMercator, geoPath } from "d3-geo";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { GeoArea, MapBubble, MapLevel } from "@/types/map";
-import { RS_MAP_VIEWBOX } from "@/mocks/geography";
+import { RS_MAP_VIEWBOX_HEIGHT, RS_MAP_VIEWBOX_WIDTH } from "@/mocks/geography";
 import { IBGE_CODAREA_TO_UF } from "@/components/map/ibgeStateCodes";
 import { formatNumber } from "@/lib/utils";
 import brazilStatesGeoJson from "@/data/geo/brasil-uf.json";
@@ -22,8 +22,9 @@ import brazilStatesGeoJson from "@/data/geo/brasil-uf.json";
  * real polygons weren't pursued (curated marker positions instead).
  */
 
-const COUNTRY_VIEWBOX_WIDTH = 400;
-const COUNTRY_VIEWBOX_HEIGHT = 420;
+const COUNTRY_VIEWBOX_WIDTH = 460;
+const COUNTRY_VIEWBOX_HEIGHT = 480;
+const MAP_MAX_HEIGHT = 560;
 
 type StateFeature = Feature<Geometry, { codarea: string }>;
 
@@ -38,19 +39,29 @@ const STATE_PROJECTION = geoMercator().fitSize(
 );
 const STATE_PATH_GENERATOR = geoPath(STATE_PROJECTION);
 
-const [RS_VIEWBOX_MIN_X, RS_VIEWBOX_MIN_Y, RS_VIEWBOX_WIDTH, RS_VIEWBOX_HEIGHT] = RS_MAP_VIEWBOX
-  .split(" ")
-  .map(Number);
-
 const RS_FEATURE = STATES_GEOJSON.features.find(
   (feature: StateFeature) => IBGE_CODAREA_TO_UF[feature.properties.codarea] === "RS"
 );
 
 const RS_PROJECTION = RS_FEATURE
-  ? geoMercator().fitSize([RS_VIEWBOX_WIDTH, RS_VIEWBOX_HEIGHT], RS_FEATURE)
+  ? geoMercator().fitSize([RS_MAP_VIEWBOX_WIDTH, RS_MAP_VIEWBOX_HEIGHT], RS_FEATURE)
   : null;
 const RS_PATH_GENERATOR = RS_PROJECTION ? geoPath(RS_PROJECTION) : null;
 const RS_PATH_D = RS_FEATURE && RS_PATH_GENERATOR ? (RS_PATH_GENERATOR(RS_FEATURE) ?? undefined) : undefined;
+
+/** Projects a municipality's real lat/lon into the RS viewBox's pixel
+ * space, using the exact same projection as the RS polygon itself --
+ * this is what makes a marker land on the municipality it names.
+ * Rounded to 2 decimals (thousandths of a pixel, invisible either way):
+ * d3-geo's Mercator math goes through Math.tan/Math.log, and Node's
+ * V8 vs. the browser's V8 can disagree in the last couple of binary
+ * digits -- unrounded, that's a real (if microscopic) SSR/CSR
+ * hydration mismatch on every marker, not just a cosmetic risk. */
+function projectMunicipality(bubble: MapBubble): [number, number] {
+  if (!RS_PROJECTION) return [0, 0];
+  const [x, y] = RS_PROJECTION([bubble.lon, bubble.lat]) ?? [0, 0];
+  return [Math.round(x * 100) / 100, Math.round(y * 100) / 100];
+}
 
 interface GeographicMapProps {
   level: MapLevel;
@@ -89,7 +100,7 @@ export function GeographicMap({
         <svg
           viewBox={`0 0 ${COUNTRY_VIEWBOX_WIDTH} ${COUNTRY_VIEWBOX_HEIGHT}`}
           className="w-full"
-          style={{ maxHeight: 380 }}
+          style={{ maxHeight: MAP_MAX_HEIGHT }}
           role="img"
           aria-label="Mapa do Brasil"
         >
@@ -152,9 +163,9 @@ export function GeographicMap({
   return (
     <div className="relative">
       <svg
-        viewBox={RS_MAP_VIEWBOX}
+        viewBox={`0 0 ${RS_MAP_VIEWBOX_WIDTH} ${RS_MAP_VIEWBOX_HEIGHT}`}
         className="w-full"
-        style={{ maxHeight: 380 }}
+        style={{ maxHeight: MAP_MAX_HEIGHT }}
         role="img"
         aria-label={`Mapa de ${stateCode}`}
       >
@@ -166,8 +177,7 @@ export function GeographicMap({
         />
 
         {bubbles.map((bubble) => {
-          const cx = RS_VIEWBOX_MIN_X + (bubble.x / 100) * RS_VIEWBOX_WIDTH;
-          const cy = RS_VIEWBOX_MIN_Y + (bubble.y / 100) * RS_VIEWBOX_HEIGHT;
+          const [cx, cy] = projectMunicipality(bubble);
           const isClickable = bubble.hasData && Boolean(onSelectBubble);
 
           return (
