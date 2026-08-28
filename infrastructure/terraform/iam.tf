@@ -73,6 +73,10 @@ resource "google_service_account_iam_member" "airflow_impersonation" {
 resource "google_service_account" "de" {
   account_id   = "epidemiological-de-sa"
   display_name = "Epidemiological Intelligence Data Engineering"
+
+  depends_on = [
+    google_project_service.iam_api
+  ]
 }
 
 resource "google_storage_bucket_iam_member" "de_storage_editor" {

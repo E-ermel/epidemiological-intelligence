@@ -8,6 +8,10 @@ resource "google_storage_bucket" "data_lake" {
 
   public_access_prevention = "enforced"
   force_destroy            = false
+
+  depends_on = [
+    google_project_service.storage_api
+  ]
 }
 resource "google_bigquery_dataset" "analytics" {
   dataset_id    = "epidemiological_intelligence"
@@ -17,4 +21,8 @@ resource "google_bigquery_dataset" "analytics" {
   location = "US"
 
   delete_contents_on_destroy = false
+
+  depends_on = [
+    google_project_service.bigquery_api
+  ]
 }

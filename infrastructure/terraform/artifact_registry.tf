@@ -27,4 +27,8 @@ resource "google_artifact_registry_repository" "data_science" {
 resource "google_service_account" "ai" {
   account_id   = "epidemiological-ai-sa"
   display_name = "Epidemiological Intelligence AI"
+
+  depends_on = [
+    google_project_service.iam_api
+  ]
 }
