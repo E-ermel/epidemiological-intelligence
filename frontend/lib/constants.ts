@@ -31,6 +31,23 @@ export const DISEASE_LABELS: Record<DiseaseCode, string> = Object.fromEntries(
 ) as Record<DiseaseCode, string>;
 
 /**
+ * One color per disease, reused everywhere a disease needs a visual
+ * identity (DiseaseDistributionChart, GeneticChainBackground) so the
+ * same disease reads as the same color across the app. Deliberately
+ * all cool/blue-adjacent hues (blue, cyan, indigo, teal, violet, sky)
+ * -- distinguishable without breaking the "predominância de azul, sem
+ * neon" design language.
+ */
+export const DISEASE_COLORS: Record<DiseaseCode, string> = {
+  ASMA: "#2563eb",
+  "BRONQUITE AGUDA": "#0891b2",
+  "BRONQUITE CRÔNICA": "#4f46e5",
+  "INFARTO AGUDO DO MIOCÁRDIO": "#0d9488",
+  "INSUFICIÊNCIA CARDÍACA": "#7c3aed",
+  LEPTOSPIROSE: "#0369a1",
+};
+
+/**
  * Presentation-only copy -- the API has no business generating prose,
  * so this stays client-side, keyed by the real `disease` code the
  * API does return (GET /studies).

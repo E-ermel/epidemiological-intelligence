@@ -2,16 +2,8 @@
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { DiseaseDistributionSlice } from "@/types/epidemiology";
+import { DISEASE_COLORS } from "@/lib/constants";
 import { formatNumber } from "@/lib/utils";
-
-const COLORS = [
-  "var(--color-primary-600)",
-  "var(--color-primary-500)",
-  "#60a5fa",
-  "#93c5fd",
-  "#bfdbfe",
-  "#dbeafe",
-];
 
 export function DiseaseDistributionChart({ data }: { data: DiseaseDistributionSlice[] }) {
   return (
@@ -26,8 +18,8 @@ export function DiseaseDistributionChart({ data }: { data: DiseaseDistributionSl
           paddingAngle={2}
           strokeWidth={0}
         >
-          {data.map((entry, index) => (
-            <Cell key={entry.disease} fill={COLORS[index % COLORS.length]} />
+          {data.map((entry) => (
+            <Cell key={entry.disease} fill={DISEASE_COLORS[entry.disease] ?? "var(--color-primary-500)"} />
           ))}
         </Pie>
         <Tooltip
