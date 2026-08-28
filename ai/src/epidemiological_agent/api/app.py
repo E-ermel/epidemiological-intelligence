@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from epidemiological_agent.logging_config import (
     configure_logging,
 )
-from epidemiological_agent.api.routers import chat
+from epidemiological_agent.api.routers import chat, geography, overview, studies
 configure_logging()
 
 app = FastAPI(
@@ -38,6 +38,9 @@ app.add_middleware(
 )
 
 app.include_router(chat.router)
+app.include_router(overview.router)
+app.include_router(geography.router)
+app.include_router(studies.router)
 
 
 @app.get("/")
