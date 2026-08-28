@@ -1,5 +1,5 @@
 # Airflow
-airflow/.env
+
 airflow/logs/
 airflow/secrets/
 
@@ -25,7 +25,7 @@ __pycache__/
 notebooks
 artifacts
 .git
-.env
+*.env
 notebook_test.ipynb
 GLOSSARIO.md
 ai/chroma_db/*
