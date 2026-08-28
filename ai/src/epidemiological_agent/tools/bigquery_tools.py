@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 import pandas as pd
 from google.cloud import bigquery
 
@@ -7,17 +9,23 @@ from epidemiological_agent.config import (
     BIGQUERY_TABLE
 )
 
+
+@lru_cache(maxsize=1)
+def _get_bigquery_client() -> bigquery.Client:
+    # Constructing a client does credential discovery on every call;
+    # bigquery.Client is documented safe to reuse across queries.
+    return bigquery.Client(project=PROJECT_ID)
+
+
 def query_epidemiological_data(
     disease: str | None = None,
     municipality: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> pd.DataFrame:
-    
-    client = bigquery.Client(
-        project=PROJECT_ID
-    )
-    
+
+    client = _get_bigquery_client()
+
     table = (
         f"{PROJECT_ID}."
         f"{BIGQUERY_DATASET}."
@@ -112,9 +120,7 @@ def get_total_cases(
     end_date: str | None = None,
 ) -> int:
 
-    client = bigquery.Client(
-        project=PROJECT_ID
-    )
+    client = _get_bigquery_client()
 
     table = (
         f"{PROJECT_ID}."

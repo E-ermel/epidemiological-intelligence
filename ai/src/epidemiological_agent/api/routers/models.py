@@ -2,14 +2,14 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 
 from epidemiological_agent.api.gold_data import load_gold_dataframe
+from epidemiological_agent.api.model_metadata_batch import (
+    fetch_model_metadata_for_diseases,
+)
 from epidemiological_agent.api.schemas_models import (
     ModelMetadataResponse,
     PredictionPoint,
 )
-from epidemiological_agent.tools.model_tools import (
-    get_model_metadata,
-    get_predictions,
-)
+from epidemiological_agent.tools.model_tools import get_predictions
 
 router = APIRouter(tags=["models"])
 
@@ -22,18 +22,15 @@ def get_models() -> list[ModelMetadataResponse]:
     # up in new data doesn't need a code change here to be picked up.
     diseases = load_gold_dataframe()["disease"].unique()
 
-    models = []
+    metadata_by_disease = fetch_model_metadata_for_diseases(diseases)
 
-    for disease in diseases:
-        try:
-            metadata = get_model_metadata(disease)
-        except FileNotFoundError:
-            # Disease has epidemiological data but no trained model yet.
-            continue
-
-        models.append(ModelMetadataResponse(**metadata))
-
-    return models
+    return [
+        ModelMetadataResponse(**metadata)
+        for metadata in metadata_by_disease.values()
+        if metadata is not None
+        # None means the disease has epidemiological data but no
+        # trained model yet.
+    ]
 
 
 @router.get(

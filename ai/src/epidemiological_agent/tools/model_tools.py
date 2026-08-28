@@ -1,7 +1,9 @@
 import json
 import os
 import re
+import time
 import unicodedata
+from functools import lru_cache
 from io import BytesIO
 from typing import Any
 
@@ -49,16 +51,19 @@ def _normalize_disease_name(
     return slug.strip("_").lower()
 
 
+@lru_cache(maxsize=1)
+def _get_storage_client() -> storage.Client:
+    # Constructing a client does credential discovery on every call
+    # (measured ~1s+ each); storage.Client is documented safe to reuse.
+    return storage.Client(project=PROJECT_ID)
+
+
 def _get_bucket():
     """
     Return the GCS bucket used by model artifacts.
     """
 
-    client = storage.Client(
-        project=PROJECT_ID
-    )
-
-    return client.bucket(
+    return _get_storage_client().bucket(
         ARTIFACT_BUCKET
     )
 
@@ -155,6 +160,10 @@ def get_model_metrics(
     return json.loads(content)
 
 
+_METADATA_CACHE_TTL_SECONDS = 300
+_metadata_cache: dict[str, tuple[float, dict | None]] = {}
+
+
 def get_model_metadata(
     disease: str,
 ) -> dict:
@@ -164,7 +173,25 @@ def get_model_metadata(
     training_period, test_period, metrics) -- everything
     get_model_metrics() alone doesn't have, since that only reads
     metrics.json.
+
+    Cached per disease (including the FileNotFoundError case, so
+    repeatedly asking about an untrained disease doesn't repeatedly
+    round-trip GCS to find out) -- /models and /studies call this once
+    per disease every request, and each call is a real GCS round trip
+    (blob.exists() + download), not a local lookup.
     """
+
+    cached = _metadata_cache.get(disease)
+
+    if cached is not None:
+        cached_at, cached_value = cached
+
+        if time.time() - cached_at < _METADATA_CACHE_TTL_SECONDS:
+            if cached_value is None:
+                raise FileNotFoundError(
+                    f"Metadata not found for disease: {disease}"
+                )
+            return cached_value
 
     bucket = _get_bucket()
 
@@ -178,6 +205,7 @@ def get_model_metadata(
     )
 
     if not blob.exists():
+        _metadata_cache[disease] = (time.time(), None)
         raise FileNotFoundError(
             f"Metadata not found for disease: "
             f"{disease}"
@@ -187,7 +215,10 @@ def get_model_metadata(
         encoding="utf-8"
     )
 
-    return json.loads(content)
+    metadata = json.loads(content)
+    _metadata_cache[disease] = (time.time(), metadata)
+
+    return metadata
 
 
 def get_predictions(

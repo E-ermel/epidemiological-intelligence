@@ -9,8 +9,8 @@ from epidemiological_agent.api.routers import data as data_router
 from epidemiological_agent.api.routers import geography as geography_router
 from epidemiological_agent.api.routers import models as models_router
 from epidemiological_agent.api.routers import overview as overview_router
-from epidemiological_agent.api.routers import studies as studies_router
 from epidemiological_agent.api import gold_data
+from epidemiological_agent.api import model_metadata_batch
 
 
 @pytest.fixture
@@ -130,7 +130,7 @@ def test_studies_marks_missing_model_as_none(monkeypatch, client):
         return {"model_version": "v3"}
 
     monkeypatch.setattr(
-        studies_router, "get_model_metadata", fake_get_model_metadata
+        model_metadata_batch, "get_model_metadata", fake_get_model_metadata
     )
 
     response = client.get("/studies")
@@ -172,7 +172,7 @@ def test_models_skips_diseases_without_a_trained_model(monkeypatch, client):
         return _FAKE_METADATA
 
     monkeypatch.setattr(
-        models_router, "get_model_metadata", fake_get_model_metadata
+        model_metadata_batch, "get_model_metadata", fake_get_model_metadata
     )
 
     response = client.get("/models")
