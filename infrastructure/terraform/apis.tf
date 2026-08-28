@@ -25,3 +25,17 @@ resource "google_project_service" "iam_api" {
 
   disable_on_destroy = false
 }
+
+resource "google_project_service" "sts_api" {
+  project = var.project_id
+  service = "sts.googleapis.com"
+
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "iamcredentials_api" {
+  project = var.project_id
+  service = "iamcredentials.googleapis.com"
+
+  disable_on_destroy = false
+}

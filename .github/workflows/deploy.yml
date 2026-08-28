@@ -16,9 +16,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Validate deployment configuration
+        env:
+          WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          DEPLOY_SA: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: ${{ vars.GCP_REGION }}
+        run: |
+          test -n "$WIF_PROVIDER" || (echo "GCP_WORKLOAD_IDENTITY_PROVIDER is missing" && exit 1)
+          test -n "$DEPLOY_SA" || (echo "GCP_DEPLOY_SERVICE_ACCOUNT is missing" && exit 1)
+          test -n "$PROJECT_ID" || (echo "GCP_PROJECT_ID is missing" && exit 1)
+          test -n "$REGION" || (echo "GCP_REGION is missing" && exit 1)
+
+          echo "Deployment configuration is present."
+
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
@@ -30,6 +45,32 @@ jobs:
           gcloud auth configure-docker \
             ${{ vars.GCP_REGION }}-docker.pkg.dev \
             --quiet
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install AI dependencies
+        working-directory: ./ai
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build RAG vector store
+        working-directory: ./ai
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python build_rag.py
+
+      - name: Verify Chroma database
+        working-directory: ./ai
+        run: |
+          test -d chroma_db || (echo "chroma_db was not generated" && exit 1)
+          test -f chroma_db/chroma.sqlite3 || (echo "chroma.sqlite3 was not generated" && exit 1)
+
+          echo "Chroma vector store generated successfully."
 
       - name: Build AI Docker image
         run: |
@@ -48,4 +89,4 @@ jobs:
             --project=${{ vars.GCP_PROJECT_ID }} \
             --region=${{ vars.GCP_REGION }} \
             --image=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/epidemiological-intelligence/epidemiological-ai:${{ github.sha }} \
-            --quiet 
+            --quiet

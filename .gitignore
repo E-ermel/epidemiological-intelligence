@@ -33,3 +33,4 @@ ai/chroma_db/*
 
 # Cleanup staging (moved out of the project by hand)
 backup-cache/
+chroma_db
