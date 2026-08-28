@@ -1,97 +1,62 @@
-import json
-import os
-from io import BytesIO
+from typing import Any
 
 import pandas as pd
-from google.cloud import storage
+
+from epidemiological_intelligence.artifacts.storage import (
+    get_storage_config,
+    upload_dataframe,
+    upload_json,
+)
+
+from epidemiological_intelligence.artifacts.versioning import (
+    disease_to_slug,
+)
 
 
-def _get_gcs_config():
-    bucket_name = os.getenv(
-        "ARTIFACT_BUCKET",
-        "epidemiological-intelligence",
-    )
-
-    prefix = os.getenv(
-        "MODEL_ARTIFACT_PREFIX",
-        "modeling",
-    )
-
-    project_id = os.getenv(
-        "GCP_PROJECT_ID"
-    )
-
-    if not project_id:
-        raise ValueError(
-            "GCP_PROJECT_ID não foi definido."
-        )
-
-    return project_id, bucket_name, prefix
-
-
-def _normalize_disease_name(
+def _build_version_path(
+    *,
     disease: str,
+    version: str,
+    filename: str,
 ) -> str:
+    """
+    Build the GCS object path for a versioned model artifact.
+
+    Example:
+        modeling/leptospirose/v1/metrics.json
+    """
+
+    _, _, artifact_prefix = get_storage_config()
+
+    disease_slug = disease_to_slug(disease)
 
     return (
-        disease
-        .lower()
-        .replace(" ", "_")
-        .replace("ç", "c")
-        .replace("ã", "a")
-        .replace("á", "a")
-        .replace("â", "a")
-        .replace("é", "e")
-        .replace("ê", "e")
-        .replace("í", "i")
-        .replace("ó", "o")
-        .replace("ô", "o")
-        .replace("ú", "u")
+        f"{artifact_prefix.rstrip('/')}/"
+        f"{disease_slug}/"
+        f"{version}/"
+        f"{filename}"
     )
 
 
 def save_metrics(
+    *,
     disease: str,
-    metrics: dict,
-):
+    version: str,
+    metrics: dict[str, Any],
+) -> None:
 
-    project_id, bucket_name, prefix = (
-        _get_gcs_config()
+    _, bucket_name, _ = get_storage_config()
+
+    blob_path = _build_version_path(
+        disease=disease,
+        version=version,
+        filename="metrics.json",
     )
 
-    client = storage.Client(
-        project=project_id
-    )
-
-    bucket = client.bucket(
-        bucket_name
-    )
-
-    disease_name = (
-        _normalize_disease_name(
-            disease
-        )
-    )
-
-    blob_path = (
-        f"{prefix}/"
-        f"{disease_name}/"
-        f"metrics.json"
-    )
-
-    blob = bucket.blob(
-        blob_path
-    )
-
-    json_content = json.dumps(
-        metrics,
-        indent=4,
-        ensure_ascii=False,
-    )
-
-    blob.upload_from_string(
-        json_content,
-        content_type="application/json",
+    upload_json(
+        bucket_name=bucket_name,
+        blob_path=blob_path,
+        data=metrics,
     )
 
     print(
@@ -101,52 +66,24 @@ def save_metrics(
 
 
 def save_predictions(
+    *,
     disease: str,
+    version: str,
     predictions: pd.DataFrame,
-):
+) -> None:
 
-    project_id, bucket_name, prefix = (
-        _get_gcs_config()
+    _, bucket_name, _ = get_storage_config()
+
+    blob_path = _build_version_path(
+        disease=disease,
+        version=version,
+        filename="predictions.parquet",
     )
 
-    client = storage.Client(
-        project=project_id
-    )
-
-    bucket = client.bucket(
-        bucket_name
-    )
-
-    disease_name = (
-        _normalize_disease_name(
-            disease
-        )
-    )
-
-    blob_path = (
-        f"{prefix}/"
-        f"{disease_name}/"
-        f"predictions.parquet"
-    )
-
-    buffer = BytesIO()
-
-    predictions.to_parquet(
-        buffer,
-        index=False,
-    )
-
-    buffer.seek(0)
-
-    blob = bucket.blob(
-        blob_path
-    )
-
-    blob.upload_from_file(
-        buffer,
-        content_type=(
-            "application/octet-stream"
-        ),
+    upload_dataframe(
+        bucket_name=bucket_name,
+        blob_path=blob_path,
+        dataframe=predictions,
     )
 
     print(
@@ -156,55 +93,98 @@ def save_predictions(
 
 
 def save_municipality_metrics(
+    *,
     disease: str,
+    version: str,
     municipality_metrics: pd.DataFrame,
-):
+) -> None:
 
-    project_id, bucket_name, prefix = (
-        _get_gcs_config()
+    _, bucket_name, _ = get_storage_config()
+
+    blob_path = _build_version_path(
+        disease=disease,
+        version=version,
+        filename="municipality_metrics.parquet",
     )
 
-    client = storage.Client(
-        project=project_id
-    )
-
-    bucket = client.bucket(
-        bucket_name
-    )
-
-    disease_name = (
-        _normalize_disease_name(
-            disease
-        )
-    )
-
-    blob_path = (
-        f"{prefix}/"
-        f"{disease_name}/"
-        f"municipality_metrics.parquet"
-    )
-
-    buffer = BytesIO()
-
-    municipality_metrics.to_parquet(
-        buffer,
-        index=False,
-    )
-
-    buffer.seek(0)
-
-    blob = bucket.blob(
-        blob_path
-    )
-
-    blob.upload_from_file(
-        buffer,
-        content_type=(
-            "application/octet-stream"
-        ),
+    upload_dataframe(
+        bucket_name=bucket_name,
+        blob_path=blob_path,
+        dataframe=municipality_metrics,
     )
 
     print(
         f"Métricas municipais salvas: "
+        f"gs://{bucket_name}/{blob_path}"
+    )
+
+
+def save_metadata(
+    *,
+    disease: str,
+    version: str,
+    metadata: dict[str, Any],
+) -> None:
+
+    _, bucket_name, _ = get_storage_config()
+
+    blob_path = _build_version_path(
+        disease=disease,
+        version=version,
+        filename="metadata.json",
+    )
+
+    upload_json(
+        bucket_name=bucket_name,
+        blob_path=blob_path,
+        data=metadata,
+    )
+
+    print(
+        f"Metadata salva: "
+        f"gs://{bucket_name}/{blob_path}"
+    )
+def save_latest_pointer(
+    *,
+    disease: str,
+    version: str,
+    metadata: dict[str, Any],
+) -> None:
+    """
+    Update the pointer to the latest successfully published model version.
+    """
+
+    _, bucket_name, artifact_prefix = (
+        get_storage_config()
+    )
+
+    disease_slug = disease_to_slug(disease)
+
+    blob_path = (
+        f"{artifact_prefix.rstrip('/')}/"
+        f"{disease_slug}/"
+        f"latest.json"
+    )
+
+    latest_data = {
+        "disease": disease,
+        "version": version,
+        "run_id": metadata["run_id"],
+        "trained_at": metadata["trained_at"],
+        "path": (
+            f"{artifact_prefix.rstrip('/')}/"
+            f"{disease_slug}/"
+            f"{version}"
+        ),
+    }
+
+    upload_json(
+        bucket_name=bucket_name,
+        blob_path=blob_path,
+        data=latest_data,
+    )
+
+    print(
+        f"Latest atualizado: "
         f"gs://{bucket_name}/{blob_path}"
     )

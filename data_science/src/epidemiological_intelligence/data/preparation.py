@@ -7,6 +7,9 @@ def prepare_model_data(df: pd.DataFrame) -> pd.DataFrame:
         df["reference_date"]
     )
 
+    if df["reference_date"].dt.tz is not None:
+        df["reference_date"] = df["reference_date"].dt.tz_localize(None)
+
     df["cases"] = pd.to_numeric(
         df["cases"],
         errors="coerce"

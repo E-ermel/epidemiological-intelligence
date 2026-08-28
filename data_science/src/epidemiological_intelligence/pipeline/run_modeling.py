@@ -27,11 +27,20 @@ from epidemiological_intelligence.modeling.evaluate import (
 )
 
 from epidemiological_intelligence.artifacts.results import (
+    save_metadata,
     save_metrics,
     save_predictions,
     save_municipality_metrics,
+    save_latest_pointer,
 )
 
+from epidemiological_intelligence.artifacts.versioning import (
+    get_next_version,
+)
+
+from epidemiological_intelligence.artifacts.metadata import (
+    build_model_metadata,
+)
 
 def run_disease_pipeline(
     df: pd.DataFrame,
@@ -127,36 +136,61 @@ def run_disease_pipeline(
     # 8. Salvar artefatos
     # ------------------------------
 
+    version = get_next_version(
+        disease=disease,
+    )
+
+    metadata = build_model_metadata(
+        disease=disease,
+        version=version,
+        selected_features=selected_features,
+        comparison=comparison,
+        train_start=train_df["reference_date"].min(),
+        train_end=train_df["reference_date"].max(),
+        test_start=test_df["reference_date"].min(),
+        test_end=test_df["reference_date"].max(),
+    )
+
     save_metrics(
         disease=disease,
+        version=version,
         metrics=comparison,
     )
 
     save_predictions(
         disease=disease,
+        version=version,
         predictions=predictions,
     )
 
     save_municipality_metrics(
         disease=disease,
-        municipality_metrics=(
-            municipality_metrics
-        ),
+        version=version,
+        municipality_metrics=municipality_metrics,
     )
 
-    # ------------------------------
-    # 9. Retorno
-    # ------------------------------
+    save_metadata(
+        disease=disease,
+        version=version,
+        metadata=metadata,
+    )
+
+    save_latest_pointer(
+        disease=disease,
+        version=version,
+        metadata=metadata,
+    )
+        # ------------------------------
+        # 9. Retorno
+        # ------------------------------
 
     return {
         "disease": disease,
-        "selected_features": (
-            selected_features
-        ),
+        "version": version,
+        "metadata": metadata,
+        "selected_features": selected_features,
         "model_result": model_result,
         "predictions": predictions,
         "comparison": comparison,
-        "municipality_metrics": (
-            municipality_metrics
-        ),
+        "municipality_metrics": municipality_metrics,
     }
