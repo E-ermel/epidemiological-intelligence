@@ -45,10 +45,6 @@ def health_check():
     "/chat",
     response_model=ChatResponse,
 )
-@app.post(
-    "/chat",
-    response_model=ChatResponse,
-)
 def chat(
     request: ChatRequest,
 ) -> ChatResponse:

@@ -192,7 +192,7 @@ def total_cases_tool(
 
         return str(total)
 
-    except GoogleAPIError:
+    except Exception:
         logger.exception(
             (
                 "BigQuery query failed in total_cases_tool | "
