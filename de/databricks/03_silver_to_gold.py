@@ -144,7 +144,9 @@ display(
         "year",
         "month",
         "station_count",
-        "precipitation_avg_mm",
+        "precipitation_sum_mm",
+        "precipitation_avg_observation_mm",
+        "precipitation_max_observation_mm",
         "temperature_avg_c"
     )
     .orderBy("year", "month")
@@ -183,7 +185,9 @@ print("GOLD:", gold_df.count())
 
 print(
     "Sem clima:",
-    gold_df.filter(F.col("precipitation_avg_mm").isNull()).count()
+    gold_df.filter(
+        F.col("precipitation_sum_mm").isNull()
+    ).count()
 )
 
 # COMMAND ----------

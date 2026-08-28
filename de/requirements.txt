@@ -1,0 +1,5 @@
+pandas
+numpy
+pyarrow
+gcsfs
+google-cloud-storage
