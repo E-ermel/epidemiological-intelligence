@@ -74,7 +74,7 @@ def query_epidemiological_data(
         parameters.append(
             bigquery.ScalarQueryParameter(
                 "start_date",
-                "DATE",
+                "TIMESTAMP",
                 start_date,
             )
         )
@@ -87,7 +87,7 @@ def query_epidemiological_data(
         parameters.append(
             bigquery.ScalarQueryParameter(
                 "end_date",
-                "DATE",
+                "TIMESTAMP",
                 end_date,
             )
         )
@@ -165,7 +165,7 @@ def get_total_cases(
         parameters.append(
             bigquery.ScalarQueryParameter(
                 "start_date",
-                "DATE",
+                "TIMESTAMP",
                 start_date,
             )
         )
@@ -178,7 +178,7 @@ def get_total_cases(
         parameters.append(
             bigquery.ScalarQueryParameter(
                 "end_date",
-                "DATE",
+                "TIMESTAMP",
                 end_date,
             )
         )
