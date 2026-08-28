@@ -90,3 +90,30 @@ jobs:
             --region=${{ vars.GCP_REGION }} \
             --image=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/epidemiological-intelligence/epidemiological-ai:${{ github.sha }} \
             --quiet
+            - name: Health check
+        run: |
+          SERVICE_URL=$(gcloud run services describe epidemiological-ai \
+            --project=${{ vars.GCP_PROJECT_ID }} \
+            --region=${{ vars.GCP_REGION }} \
+            --format="value(status.url)")
+
+          echo "Waiting for AI service to become healthy..."
+
+          for i in {1..10}; do
+            HTTP_STATUS=$(curl \
+              --silent \
+              --output /dev/null \
+              --write-out "%{http_code}" \
+              "$SERVICE_URL/health" || true)
+
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "AI service is healthy."
+              exit 0
+            fi
+
+            echo "Attempt $i/10 returned HTTP $HTTP_STATUS. Retrying..."
+            sleep 10
+          done
+
+          echo "Health check failed."
+          exit 1
