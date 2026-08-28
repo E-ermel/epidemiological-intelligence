@@ -1,9 +1,11 @@
 from dotenv import load_dotenv
 import logging
+import os
 
 load_dotenv()
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from epidemiological_agent.api.schemas import (
     ChatRequest,
@@ -24,6 +26,22 @@ app = FastAPI(
         "epidemiológico do projeto."
     ),
      version="0.1.0",
+)
+
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:3000",
+    ).split(",")
+    if origin.strip()
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 @app.get("/")
