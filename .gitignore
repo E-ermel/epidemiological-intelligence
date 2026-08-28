@@ -23,12 +23,13 @@ __pycache__/
 
 .ipynb_checkpoints
 notebooks
-artifacts
+artifacts/modeling
 .git
 *.env
 notebook_test.ipynb
 GLOSSARIO.md
 ai/chroma_db/*
+.pytest_cache
 
 # Cleanup staging (moved out of the project by hand)
 backup-cache/
