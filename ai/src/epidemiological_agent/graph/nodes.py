@@ -10,6 +10,7 @@ from epidemiological_agent.prompts.system_prompt import (
 from epidemiological_agent.tools.llm_tools import (
     epidemiological_data_tool,
     total_cases_tool,
+    climate_summary_tool,
     model_metrics_tool,
     model_predictions_tool,
     municipality_model_metrics_tool,
@@ -19,6 +20,7 @@ from epidemiological_agent.tools.llm_tools import (
 tools = [
     epidemiological_data_tool,
     total_cases_tool,
+    climate_summary_tool,
     model_metrics_tool,
     model_predictions_tool,
     municipality_model_metrics_tool,

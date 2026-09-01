@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Header } from "@/components/layout/Header";
-import { GeneticChainBackground } from "@/components/decoration/GeneticChainBackground";
 import { APP_NAME, APP_SUBTITLE } from "@/lib/constants";
 import "./globals.css";
 
@@ -27,7 +26,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col bg-background text-foreground">
-        <GeneticChainBackground />
         <Header />
         <main className="page-shell w-full flex-1 px-4 py-6 sm:px-6 lg:px-8">
           {children}

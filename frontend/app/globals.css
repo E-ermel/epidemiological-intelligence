@@ -68,35 +68,3 @@ body {
   max-width: 1440px;
   margin-inline: auto;
 }
-
-/* GeneticChainBackground: one-time draw-in, not a continuous loop --
-   see that component's docstring. Only in effect when the viewer
-   hasn't asked for reduced motion; otherwise .chain-line/.chain-node
-   render at their base (fully-drawn, fully-visible) attribute values
-   with no animation at all. */
-@keyframes chain-draw {
-  from {
-    stroke-dashoffset: 100;
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-@keyframes chain-node-fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .chain-line {
-    animation: chain-draw 1.6s ease-out forwards;
-  }
-  .chain-node {
-    animation: chain-node-fade 0.5s ease-out forwards;
-  }
-}

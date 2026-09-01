@@ -2,12 +2,15 @@ import type { ModelMetadata, ObservedVsPredictedPoint } from "@/types/model";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ObservedVsPredictedChart } from "@/components/charts/ObservedVsPredictedChart";
+import { RetrainButton, type RetrainStatus } from "@/components/models/RetrainButton";
 import { formatDate } from "@/lib/utils";
 
 interface ModelDetailProps {
   label: string;
   model: ModelMetadata;
   observedVsPredicted: ObservedVsPredictedPoint[];
+  retrainStatus: RetrainStatus;
+  onRetrain: () => void;
 }
 
 function MetricRow({ label, base, final }: { label: string; base: number; final: number }) {
@@ -20,7 +23,13 @@ function MetricRow({ label, base, final }: { label: string; base: number; final:
   );
 }
 
-export function ModelDetail({ label, model, observedVsPredicted }: ModelDetailProps) {
+export function ModelDetail({
+  label,
+  model,
+  observedVsPredicted,
+  retrainStatus,
+  onRetrain,
+}: ModelDetailProps) {
   return (
     <div className="flex flex-col gap-4">
       <Card>
@@ -32,9 +41,12 @@ export function ModelDetail({ label, model, observedVsPredicted }: ModelDetailPr
               {formatDate(model.trained_at)}
             </p>
           </div>
-          <Badge tone="success">
-            +{model.metrics.mae_improvement_pct.toFixed(1)}% MAE vs. baseline
-          </Badge>
+          <div className="flex items-start gap-3">
+            <Badge tone="success">
+              +{model.metrics.mae_improvement_pct.toFixed(1)}% MAE vs. baseline
+            </Badge>
+            <RetrainButton status={retrainStatus} onRetrain={onRetrain} />
+          </div>
         </div>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">

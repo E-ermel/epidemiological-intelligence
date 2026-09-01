@@ -1,3 +1,4 @@
+import pandas as pd
 from fastapi import APIRouter, Query
 
 from epidemiological_agent.api.gold_data import load_gold_dataframe
@@ -24,8 +25,21 @@ KNOWN_STATES: dict[str, str] = {
 def get_geo(
     level: str,
     state: str | None = Query(default=None),
+    disease: list[str] = Query(default=[]),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
 ) -> list[GeoArea]:
     df = load_gold_dataframe()
+
+    if disease:
+        wanted = {d.upper() for d in disease}
+        df = df[df["disease"].str.upper().isin(wanted)]
+
+    if start_date is not None:
+        df = df[df["reference_date"] >= pd.Timestamp(start_date)]
+
+    if end_date is not None:
+        df = df[df["reference_date"] <= pd.Timestamp(end_date)]
 
     if level == "country":
         total_cases = int(df["cases"].sum(skipna=True))

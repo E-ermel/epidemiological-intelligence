@@ -104,15 +104,37 @@ export interface ApiStudySummary {
   activeModelVersion: string | null;
 }
 
-/** Maps 1:1 to GET /overview. */
-export function getOverview() {
-  return request<ApiOverviewResponse>("/overview");
+export interface OverviewFilters {
+  diseases?: string[];
+  startDate?: string;
+  endDate?: string;
 }
 
-/** Maps 1:1 to GET /geo/{level}?state=. */
-export function getGeo(level: MapLevel, state?: string) {
-  const query = state ? `?state=${encodeURIComponent(state)}` : "";
-  return request<GeoArea[]>(`/geo/${level}${query}`);
+/** Maps 1:1 to GET /overview?disease=&start_date=&end_date=. */
+export function getOverview(filters: OverviewFilters = {}) {
+  const params = new URLSearchParams();
+  for (const disease of filters.diseases ?? []) {
+    params.append("disease", disease);
+  }
+  if (filters.startDate) params.set("start_date", filters.startDate);
+  if (filters.endDate) params.set("end_date", filters.endDate);
+
+  const query = params.toString();
+  return request<ApiOverviewResponse>(`/overview${query ? `?${query}` : ""}`);
+}
+
+/** Maps 1:1 to GET /geo/{level}?state=&disease=&start_date=&end_date=. */
+export function getGeo(level: MapLevel, state?: string, filters: OverviewFilters = {}) {
+  const params = new URLSearchParams();
+  if (state) params.set("state", state);
+  for (const disease of filters.diseases ?? []) {
+    params.append("disease", disease);
+  }
+  if (filters.startDate) params.set("start_date", filters.startDate);
+  if (filters.endDate) params.set("end_date", filters.endDate);
+
+  const query = params.toString();
+  return request<GeoArea[]>(`/geo/${level}${query ? `?${query}` : ""}`);
 }
 
 /** Maps 1:1 to GET /studies. */
@@ -133,6 +155,44 @@ export function getModelPredictions(disease: string, municipality?: string) {
   return request<ObservedVsPredictedPoint[]>(
     `/models/${encodeURIComponent(disease)}/predictions${query}`
   );
+}
+
+export interface ApiRetrainResponse {
+  status: string;
+  executionName: string;
+}
+
+/** Maps 1:1 to POST /models/{disease}/retrain. */
+export function retrainModel(disease: string) {
+  return request<ApiRetrainResponse>(`/models/${encodeURIComponent(disease)}/retrain`, {
+    method: "POST",
+  });
+}
+
+/** Maps 1:1 to POST /models/retrain (bulk -- every disease in one job execution). */
+export function retrainAllModels() {
+  return request<ApiRetrainResponse>("/models/retrain", {
+    method: "POST",
+  });
+}
+
+export interface ApiRetrainExecutionStatus {
+  status: "running" | "succeeded" | "failed";
+  logUri: string | null;
+  startTime: string | null;
+  completionTime: string | null;
+}
+
+/** Maps 1:1 to GET /models/retrain/status?execution=. */
+export function getRetrainExecutionStatus(executionName: string) {
+  return request<ApiRetrainExecutionStatus>(
+    `/models/retrain/status?execution=${encodeURIComponent(executionName)}`
+  );
+}
+
+/** Maps 1:1 to GET /municipalities. */
+export function getMunicipalitiesData() {
+  return request<string[]>("/municipalities");
 }
 
 /** Maps 1:1 to GET /data?disease=&municipality=&start_date=&end_date=. */

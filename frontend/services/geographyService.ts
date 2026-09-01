@@ -1,5 +1,5 @@
 import type { GeoArea, MapBubble } from "@/types/map";
-import { getGeo } from "@/services/api";
+import { getGeo, type OverviewFilters } from "@/services/api";
 import { RS_MUNICIPALITY_BUBBLES } from "@/mocks/geography";
 
 /**
@@ -22,8 +22,8 @@ function normalizeMunicipalityName(name: string): string {
  * IBGE codarea -> sigla (components/map/ibgeStateCodes.ts), not by a
  * curated x/y like the old bubble map needed.
  */
-export async function getCountryAreas(): Promise<GeoArea[]> {
-  return getGeo("country");
+export async function getCountryAreas(filters: OverviewFilters = {}): Promise<GeoArea[]> {
+  return getGeo("country", undefined, filters);
 }
 
 /**
@@ -36,10 +36,13 @@ export async function getCountryAreas(): Promise<GeoArea[]> {
  * curated list has nowhere to be drawn and is dropped, not invented a
  * position for.
  */
-export async function getMunicipalityBubbles(stateCode: string): Promise<MapBubble[]> {
+export async function getMunicipalityBubbles(
+  stateCode: string,
+  filters: OverviewFilters = {}
+): Promise<MapBubble[]> {
   if (stateCode !== "RS") return [];
 
-  const areas = await getGeo("state", stateCode);
+  const areas = await getGeo("state", stateCode, filters);
 
   const positionByName = new Map(
     RS_MUNICIPALITY_BUBBLES.map((b) => [normalizeMunicipalityName(b.name), b])

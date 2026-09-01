@@ -80,6 +80,41 @@ def test_overview_aggregates_gold_table(client):
     }
 
 
+def test_overview_filters_by_disease(client):
+    response = client.get("/overview", params={"disease": "ASMA"})
+
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["metrics"]["totalCases"] == 15
+    assert {s["disease"] for s in body["diseaseDistribution"]} == {"ASMA"}
+
+
+def test_overview_filters_by_date_range(client):
+    response = client.get(
+        "/overview",
+        params={"start_date": "2024-01-01", "end_date": "2024-12-31"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["metrics"]["totalCases"] == 15
+    assert body["metrics"]["periodStart"] == "2024-01-01"
+    assert body["metrics"]["periodEnd"] == "2024-02-01"
+
+
+def test_overview_returns_empty_metrics_when_filter_matches_nothing(client):
+    response = client.get("/overview", params={"disease": "DENGUE"})
+
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["metrics"]["totalCases"] == 0
+    assert body["caseCurve"] == []
+    assert body["diseaseDistribution"] == []
+
+
 # ---------------------------------------------------------------------
 # /geo/{level}
 # ---------------------------------------------------------------------
@@ -116,6 +151,31 @@ def test_geo_unknown_level_returns_empty_list(client):
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_geo_country_filters_by_disease(client):
+    response = client.get("/geo/country", params={"disease": "ASMA"})
+
+    assert response.status_code == 200
+    body = response.json()
+
+    by_id = {area["id"]: area for area in body}
+    assert by_id["RS"]["cases"] == 15
+
+
+def test_geo_state_filters_by_date_range(client):
+    response = client.get(
+        "/geo/state",
+        params={"state": "RS", "start_date": "2024-01-01", "end_date": "2024-12-31"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+
+    by_id = {area["id"]: area for area in body}
+    assert by_id["PORTO ALEGRE"]["cases"] == 10
+    assert by_id["CAXIAS DO SUL"]["cases"] == 5
+    assert "PELOTAS" not in by_id
 
 
 # ---------------------------------------------------------------------
@@ -252,6 +312,202 @@ def test_predictions_404_when_disease_has_no_model(monkeypatch, client):
 
 
 # ---------------------------------------------------------------------
+# POST /models/{disease}/retrain
+# ---------------------------------------------------------------------
+
+
+def test_retrain_starts_job_for_known_disease(monkeypatch, client):
+    monkeypatch.setattr(
+        models_router, "trigger_retrain", lambda disease: f"operations/{disease}-123"
+    )
+
+    response = client.post("/models/ASMA/retrain")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "started",
+        "executionName": "operations/ASMA-123",
+    }
+
+
+def test_retrain_404_for_unknown_disease(client):
+    response = client.post("/models/DENGUE/retrain")
+
+    assert response.status_code == 404
+
+
+def test_retrain_502_when_job_trigger_fails(monkeypatch, client):
+    from google.api_core.exceptions import GoogleAPICallError
+
+    def fake_trigger(disease):
+        raise GoogleAPICallError("boom")
+
+    monkeypatch.setattr(models_router, "trigger_retrain", fake_trigger)
+
+    response = client.post("/models/ASMA/retrain")
+
+    assert response.status_code == 502
+
+
+# ---------------------------------------------------------------------
+# GET /models/retrain/status (polled while a retrain is in progress)
+# ---------------------------------------------------------------------
+
+
+def test_retrain_status_running_has_no_completion_time(monkeypatch, client):
+    from google.cloud.run_v2.types import Execution
+    from google.protobuf.timestamp_pb2 import Timestamp
+
+    execution = Execution(
+        task_count=1,
+        running_count=1,
+        log_uri="https://console.cloud.google.com/logs/x",
+        start_time=Timestamp(seconds=1_700_000_000),
+    )
+    monkeypatch.setattr(models_router, "get_execution_status", lambda name: execution)
+
+    response = client.get(
+        "/models/retrain/status",
+        params={"execution": "projects/p/locations/r/jobs/j/executions/e"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "running"
+    assert body["logUri"] == "https://console.cloud.google.com/logs/x"
+    assert body["startTime"] is not None
+    assert body["completionTime"] is None
+
+
+def test_retrain_status_reports_succeeded(monkeypatch, client):
+    from google.cloud.run_v2.types import Condition, Execution
+    from google.protobuf.timestamp_pb2 import Timestamp
+
+    execution = Execution(
+        task_count=1,
+        succeeded_count=1,
+        conditions=[
+            Condition(type_="Completed", state=Condition.State.CONDITION_SUCCEEDED)
+        ],
+        completion_time=Timestamp(seconds=1_700_000_500),
+    )
+    monkeypatch.setattr(models_router, "get_execution_status", lambda name: execution)
+
+    response = client.get(
+        "/models/retrain/status",
+        params={"execution": "projects/p/locations/r/jobs/j/executions/e"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "succeeded"
+
+
+def test_retrain_status_succeeded_invalidates_model_metadata_cache(monkeypatch, client):
+    """
+    Regression test: a finished retrain must drop the cached
+    get_model_metadata() results, otherwise /models and /studies keep
+    reporting "no model" for up to 5 minutes after training actually
+    completed -- see model_tools.invalidate_model_metadata_cache.
+    """
+    from google.cloud.run_v2.types import Condition, Execution
+
+    execution = Execution(
+        task_count=1,
+        succeeded_count=1,
+        conditions=[
+            Condition(type_="Completed", state=Condition.State.CONDITION_SUCCEEDED)
+        ],
+    )
+    monkeypatch.setattr(models_router, "get_execution_status", lambda name: execution)
+
+    calls = []
+    monkeypatch.setattr(
+        models_router, "invalidate_model_metadata_cache", lambda: calls.append(True)
+    )
+
+    response = client.get(
+        "/models/retrain/status",
+        params={"execution": "projects/p/locations/r/jobs/j/executions/e"},
+    )
+
+    assert response.status_code == 200
+    assert calls == [True]
+
+
+def test_retrain_status_running_does_not_invalidate_cache(monkeypatch, client):
+    from google.cloud.run_v2.types import Execution
+
+    execution = Execution(task_count=1, running_count=1)
+    monkeypatch.setattr(models_router, "get_execution_status", lambda name: execution)
+
+    calls = []
+    monkeypatch.setattr(
+        models_router, "invalidate_model_metadata_cache", lambda: calls.append(True)
+    )
+
+    response = client.get(
+        "/models/retrain/status",
+        params={"execution": "projects/p/locations/r/jobs/j/executions/e"},
+    )
+
+    assert response.status_code == 200
+    assert calls == []
+
+
+def test_retrain_status_502_when_lookup_fails(monkeypatch, client):
+    from google.api_core.exceptions import GoogleAPICallError
+
+    def fake_get(name):
+        raise GoogleAPICallError("boom")
+
+    monkeypatch.setattr(models_router, "get_execution_status", fake_get)
+
+    response = client.get(
+        "/models/retrain/status",
+        params={"execution": "projects/p/locations/r/jobs/j/executions/e"},
+    )
+
+    assert response.status_code == 502
+
+
+# ---------------------------------------------------------------------
+# POST /models/retrain (bulk -- every disease in one job execution)
+# ---------------------------------------------------------------------
+
+
+def test_retrain_all_starts_a_single_job_with_no_disease_filter(monkeypatch, client):
+    calls = []
+
+    def fake_trigger(disease=None):
+        calls.append(disease)
+        return "operations/all-123"
+
+    monkeypatch.setattr(models_router, "trigger_retrain", fake_trigger)
+
+    response = client.post("/models/retrain")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "started",
+        "executionName": "operations/all-123",
+    }
+    assert calls == [None]
+
+
+def test_retrain_all_502_when_job_trigger_fails(monkeypatch, client):
+    from google.api_core.exceptions import GoogleAPICallError
+
+    def fake_trigger(disease=None):
+        raise GoogleAPICallError("boom")
+
+    monkeypatch.setattr(models_router, "trigger_retrain", fake_trigger)
+
+    response = client.post("/models/retrain")
+
+    assert response.status_code == 502
+
+
+# ---------------------------------------------------------------------
 # /data
 # ---------------------------------------------------------------------
 
@@ -303,3 +559,15 @@ def test_data_forwards_filters_and_nulls_out_nan(monkeypatch, client):
     assert body[0]["cases"] == 10.0
     assert body[1]["cases"] is None
     assert body[1]["precipitationSumMm"] is None
+
+
+# ---------------------------------------------------------------------
+# /municipalities
+# ---------------------------------------------------------------------
+
+
+def test_municipalities_returns_sorted_distinct_names(client):
+    response = client.get("/municipalities")
+
+    assert response.status_code == 200
+    assert response.json() == ["CAXIAS DO SUL", "PELOTAS", "PORTO ALEGRE"]

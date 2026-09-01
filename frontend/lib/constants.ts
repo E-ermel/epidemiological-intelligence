@@ -1,4 +1,5 @@
 import type { DiseaseCode } from "@/types/epidemiology";
+import type { EpidemiologicalRecord } from "@/types/data";
 
 export const APP_NAME = "Epidemiological Intelligence";
 export const APP_SUBTITLE = "Plataforma de Inteligência Epidemiológica";
@@ -32,7 +33,7 @@ export const DISEASE_LABELS: Record<DiseaseCode, string> = Object.fromEntries(
 
 /**
  * One color per disease, reused everywhere a disease needs a visual
- * identity (DiseaseDistributionChart, GeneticChainBackground) so the
+ * identity (DiseaseDistributionChart) so the
  * same disease reads as the same color across the app. Deliberately
  * all cool/blue-adjacent hues (blue, cyan, indigo, teal, violet, sky)
  * -- distinguishable without breaking the "predominância de azul, sem
@@ -65,3 +66,22 @@ export const DISEASE_DESCRIPTIONS: Record<DiseaseCode, string> = {
   LEPTOSPIROSE:
     "Casos de leptospirose associados a precipitação e umidade relativa do mês anterior -- o padrão sazonal mais forte da base.",
 };
+
+/**
+ * Climate fields on EpidemiologicalRecord (types/data.ts), paired with
+ * a display label -- backs the variable picker in the per-study
+ * dashboard (components/studies/StudyDashboardModal.tsx).
+ */
+export const CLIMATE_VARIABLES: {
+  key: keyof EpidemiologicalRecord;
+  label: string;
+}[] = [
+  { key: "precipitationSumMm", label: "Precipitação (mm)" },
+  { key: "precipitationMaxObservationMm", label: "Precipitação máxima (mm)" },
+  { key: "temperatureAvgC", label: "Temperatura média (°C)" },
+  { key: "dewPointAvgC", label: "Ponto de orvalho (°C)" },
+  { key: "relativeHumidityAvgPct", label: "Umidade relativa (%)" },
+  { key: "atmosphericPressureAvgMb", label: "Pressão atmosférica (mb)" },
+  { key: "windSpeedAvgMs", label: "Vento médio (m/s)" },
+  { key: "windGustMaxMs", label: "Rajada máxima (m/s)" },
+];

@@ -31,7 +31,13 @@ def load_gold_dataframe() -> pd.DataFrame:
             return cached_df.copy()
 
     df = query_epidemiological_data()
-    df["reference_date"] = pd.to_datetime(df["reference_date"])
+    # BigQuery TIMESTAMP columns come back tz-aware (UTC) via
+    # to_dataframe(), but a plain "YYYY-MM-DD" filter string parses to
+    # a tz-naive Timestamp -- comparing the two raises "Invalid
+    # comparison between dtype=datetime64[us, UTC] and Timestamp" (hit
+    # in /overview's date-range filter). Normalizing to tz-naive UTC
+    # here, once, keeps every comparison downstream tz-naive too.
+    df["reference_date"] = pd.to_datetime(df["reference_date"], utc=True).dt.tz_localize(None)
     df["cases"] = pd.to_numeric(df["cases"], errors="coerce")
 
     _cache["gold"] = (time.time(), df)

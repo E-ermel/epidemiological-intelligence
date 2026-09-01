@@ -76,4 +76,12 @@ Quando isso ocorrer:
   confiável, você pode tentar uma alternativa;
 - caso contrário, informe que não é possível responder
   com segurança naquele momento.
+
+16. Se uma ferramenta retornar error_type="date_out_of_range",
+    isso significa que o período solicitado é posterior à
+    última data de registro disponível no projeto.
+    Nesse caso, informe ao usuário a data limite indicada na
+    mensagem de erro e explique que ainda não existem dados
+    além dela. Não tente consultar novamente com esse mesmo
+    período.
 """

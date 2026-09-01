@@ -1,3 +1,5 @@
+import os
+
 from epidemiological_intelligence.data.bigquery import (
     load_gold_from_bigquery,
 )
@@ -11,11 +13,13 @@ from epidemiological_intelligence.pipeline.run_modeling import (
 )
 
 
-def run_all_models(df):
+def run_all_models(df, diseases=None):
+
+    diseases = list(diseases) if diseases is not None else list(MODEL_CONFIG)
 
     results = {}
 
-    for disease in MODEL_CONFIG:
+    for disease in diseases:
 
         print("\n" + "=" * 60)
         print(f"Treinando: {disease}")
@@ -51,6 +55,20 @@ def run_all_models(df):
 
 def main():
 
+    # Cloud Run Job execution override -- lets the retrain trigger in
+    # ai/ (see api/retrain_job.py) ask for a single disease instead of
+    # the full run. Unset (the scheduled/Airflow-driven run) trains
+    # every disease in MODEL_CONFIG, same as before.
+    disease_filter = os.environ.get("DISEASE_FILTER")
+
+    if disease_filter and disease_filter not in MODEL_CONFIG:
+        raise ValueError(
+            f"DISEASE_FILTER={disease_filter!r} is not a known disease. "
+            f"Expected one of: {sorted(MODEL_CONFIG)}"
+        )
+
+    diseases = [disease_filter] if disease_filter else list(MODEL_CONFIG)
+
     print("Carregando Gold do BigQuery...")
 
     df = load_gold_from_bigquery()
@@ -60,12 +78,12 @@ def main():
 
     print("\nExecutando modelos...")
 
-    results = run_all_models(df)
+    results = run_all_models(df, diseases=diseases)
 
     print("\nFinalizado.")
     print(
         f"Modelos concluídos: "
-        f"{len(results)}/{len(MODEL_CONFIG)}"
+        f"{len(results)}/{len(diseases)}"
     )
 
 

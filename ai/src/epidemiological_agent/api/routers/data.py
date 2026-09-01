@@ -1,8 +1,7 @@
-import math
-
 import pandas as pd
 from fastapi import APIRouter, Query
 
+from epidemiological_agent.api.gold_data import load_gold_dataframe
 from epidemiological_agent.api.schemas_data import EpidemiologicalRecord
 from epidemiological_agent.tools.bigquery_tools import query_epidemiological_data
 
@@ -21,13 +20,14 @@ _CLIMATE_COLUMNS = [
 
 
 def _none_if_nan(value) -> float | None:
-    if value is None:
+    # pd.isna() covers None, float NaN, and pandas' own NA marker
+    # (pd.NA -- what a nullable-dtype column, e.g. an Int64/Float64
+    # "cases" column with a missing LEFT JOIN match, actually holds).
+    # math.isnan(pd.NA) raises TypeError, and the old except branch
+    # returned pd.NA unchanged, which Pydantic then rejected as
+    # "not a valid float" -- a 500 on any row with a missing value.
+    if pd.isna(value):
         return None
-    try:
-        if math.isnan(value):
-            return None
-    except TypeError:
-        return value
     return float(value)
 
 
@@ -64,3 +64,17 @@ def get_data(
         )
         for row in df.itertuples()
     ]
+
+
+@router.get("/municipalities", response_model=list[str])
+def get_municipalities() -> list[str]:
+    """
+    Distinct municipalities in the Gold table -- backs the municipality
+    <select> in Explorar Dados and the per-study dashboard, both of
+    which used to be a free-text field with no real list behind it.
+    Uses the cached full table (load_gold_dataframe) rather than a
+    fresh BigQuery query, same reasoning as /overview and /studies.
+    """
+
+    df = load_gold_dataframe()
+    return sorted(df["municipality"].dropna().unique().tolist())

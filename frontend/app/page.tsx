@@ -4,6 +4,7 @@ import { MetricCard } from "@/components/ui/MetricCard";
 import { EpidemiologicalChart } from "@/components/charts/EpidemiologicalChart";
 import { DiseaseDistributionChart } from "@/components/charts/DiseaseDistributionChart";
 import { OverviewMap } from "@/components/map/OverviewMap";
+import { OverviewFilters } from "@/components/overview/OverviewFilters";
 import { getOverviewData } from "@/services/overviewService";
 import { getCountryAreas, getMunicipalityBubbles } from "@/services/geographyService";
 import { formatDate, formatNumber } from "@/lib/utils";
@@ -12,13 +13,33 @@ import { formatDate, formatNumber } from "@/lib/utils";
 // be fetched per-request, not baked in at `next build` time.
 export const dynamic = "force-dynamic";
 
-export default async function OverviewPage() {
+interface OverviewPageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}
+
+export default async function OverviewPage({ searchParams }: OverviewPageProps) {
+  const params = await searchParams;
+  const diseaseParam = params.disease;
+  const diseases = diseaseParam === undefined
+    ? []
+    : Array.isArray(diseaseParam)
+      ? diseaseParam
+      : [diseaseParam];
+  const startDate = typeof params.startDate === "string" ? params.startDate : undefined;
+  const endDate = typeof params.endDate === "string" ? params.endDate : undefined;
+
+  const mapFilters = { diseases, startDate, endDate };
+
   const [{ metrics, caseCurve, diseaseDistribution: distribution }, countryAreas, rsBubbles] =
     await Promise.all([
-      getOverviewData(),
-      getCountryAreas(),
-      getMunicipalityBubbles("RS"),
+      getOverviewData(mapFilters),
+      getCountryAreas(mapFilters),
+      getMunicipalityBubbles("RS", mapFilters),
     ]);
+
+  const periodLabel = metrics.periodStart && metrics.periodEnd
+    ? `${new Date(metrics.periodStart).getUTCFullYear()}–${new Date(metrics.periodEnd).getUTCFullYear()}`
+    : "—";
 
   return (
     <div className="flex flex-col gap-6">
@@ -31,6 +52,8 @@ export default async function OverviewPage() {
         </p>
       </div>
 
+      <OverviewFilters />
+
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <MetricCard
           label="Casos analisados"
@@ -41,11 +64,7 @@ export default async function OverviewPage() {
         />
         <MetricCard label="Municípios" value={String(metrics.municipalityCount)} icon={MapPinned} />
         <MetricCard label="Doenças monitoradas" value={String(metrics.diseaseCount)} icon={Stethoscope} />
-        <MetricCard
-          label="Período"
-          value={`${new Date(metrics.periodStart).getUTCFullYear()}–${new Date(metrics.periodEnd).getUTCFullYear()}`}
-          icon={CalendarRange}
-        />
+        <MetricCard label="Período" value={periodLabel} icon={CalendarRange} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">

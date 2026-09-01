@@ -1,15 +1,26 @@
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
+from google.api_core.exceptions import GoogleAPICallError
 
 from epidemiological_agent.api.gold_data import load_gold_dataframe
 from epidemiological_agent.api.model_metadata_batch import (
     fetch_model_metadata_for_diseases,
 )
+from epidemiological_agent.api.retrain_job import (
+    get_execution_status,
+    summarize_execution_status,
+    trigger_retrain,
+)
 from epidemiological_agent.api.schemas_models import (
     ModelMetadataResponse,
     PredictionPoint,
+    RetrainExecutionStatus,
+    RetrainResponse,
 )
-from epidemiological_agent.tools.model_tools import get_predictions
+from epidemiological_agent.tools.model_tools import (
+    get_predictions,
+    invalidate_model_metadata_cache,
+)
 
 router = APIRouter(tags=["models"])
 
@@ -61,3 +72,78 @@ def get_model_predictions(
         )
         for row in df.itertuples()
     ]
+
+
+@router.post("/models/{disease}/retrain", response_model=RetrainResponse)
+def retrain_model(disease: str) -> RetrainResponse:
+    known_diseases = set(load_gold_dataframe()["disease"].unique())
+
+    if disease not in known_diseases:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown disease: {disease}",
+        )
+
+    try:
+        execution_name = trigger_retrain(disease)
+    except GoogleAPICallError as error:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to start retrain job: {error}",
+        )
+
+    return RetrainResponse(status="started", execution_name=execution_name)
+
+
+@router.get("/models/retrain/status", response_model=RetrainExecutionStatus)
+def get_retrain_status(execution: str = Query(...)) -> RetrainExecutionStatus:
+    """Polled by the frontend (executionName from the POST .../retrain
+    response) to know when a retrain actually finishes, not just when
+    it was accepted."""
+
+    try:
+        execution_obj = get_execution_status(execution)
+    except GoogleAPICallError as error:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch execution status: {error}",
+        )
+
+    status = summarize_execution_status(execution_obj)
+
+    if status == "succeeded":
+        # Which disease (or all of them) isn't tracked here -- clearing
+        # the whole cache is a handful of extra GCS reads on the next
+        # /models or /studies call, not worth parsing out of the
+        # execution's DISEASE_FILTER override for.
+        invalidate_model_metadata_cache()
+
+    return RetrainExecutionStatus(
+        status=status,
+        log_uri=execution_obj.log_uri or None,
+        start_time=(
+            execution_obj.start_time.isoformat()
+            if execution_obj.start_time is not None
+            else None
+        ),
+        completion_time=(
+            execution_obj.completion_time.isoformat()
+            if execution_obj.completion_time is not None
+            else None
+        ),
+    )
+
+
+@router.post("/models/retrain", response_model=RetrainResponse)
+def retrain_all_models() -> RetrainResponse:
+    """Bulk equivalent of retrain_model -- one job execution, every disease."""
+
+    try:
+        execution_name = trigger_retrain()
+    except GoogleAPICallError as error:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to start retrain job: {error}",
+        )
+
+    return RetrainResponse(status="started", execution_name=execution_name)

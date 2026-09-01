@@ -4,7 +4,7 @@ import type {
   DiseaseDistributionSlice,
   OverviewMetrics,
 } from "@/types/epidemiology";
-import { getOverview } from "@/services/api";
+import { getOverview, type OverviewFilters } from "@/services/api";
 import { DISEASE_LABELS } from "@/lib/constants";
 
 export interface OverviewData {
@@ -13,8 +13,8 @@ export interface OverviewData {
   diseaseDistribution: DiseaseDistributionSlice[];
 }
 
-export async function getOverviewData(): Promise<OverviewData> {
-  const response = await getOverview();
+export async function getOverviewData(filters: OverviewFilters = {}): Promise<OverviewData> {
+  const response = await getOverview(filters);
 
   return {
     metrics: response.metrics,

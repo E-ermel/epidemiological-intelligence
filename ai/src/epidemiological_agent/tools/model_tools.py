@@ -221,6 +221,21 @@ def get_model_metadata(
     return metadata
 
 
+def invalidate_model_metadata_cache(disease: str | None = None) -> None:
+    """
+    Drops cached get_model_metadata() results so the next call re-reads
+    GCS. Called when a retrain execution finishes (see GET
+    /models/retrain/status) -- otherwise the 5-minute TTL above keeps
+    serving a "no model yet" result cached before the retrain, even
+    though there's now a fresh metadata.json in GCS.
+    """
+
+    if disease is None:
+        _metadata_cache.clear()
+    else:
+        _metadata_cache.pop(disease, None)
+
+
 def get_predictions(
     disease: str,
 ) -> pd.DataFrame:

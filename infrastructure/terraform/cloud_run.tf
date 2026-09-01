@@ -165,6 +165,16 @@ resource "google_cloud_run_v2_service" "ai" {
       }
 
       env {
+        name  = "GCP_REGION"
+        value = var.region
+      }
+
+      env {
+        name  = "DS_JOB_NAME"
+        value = google_cloud_run_v2_job.data_science.name
+      }
+
+      env {
         name  = "BIGQUERY_DATASET"
         value = var.bigquery_dataset_id
       }

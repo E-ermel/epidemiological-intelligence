@@ -1,13 +1,21 @@
-import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { Maximize2 } from "lucide-react";
 import type { StudySummary } from "@/types/study";
-import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { formatNumber } from "@/lib/utils";
 
-export function StudyCard({ study }: { study: StudySummary }) {
+export function StudyCard({
+  study,
+  onExpand,
+}: {
+  study: StudySummary;
+  onExpand: (anchor: DOMRect) => void;
+}) {
   return (
-    <Card className="flex h-full flex-col gap-3">
+    <button
+      type="button"
+      onClick={(event) => onExpand(event.currentTarget.getBoundingClientRect())}
+      className="flex h-full w-full flex-col gap-3 rounded-2xl border border-border bg-surface p-5 text-left shadow-[var(--shadow-card)] transition-shadow hover:shadow-md"
+    >
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">{study.label}</h3>
         {study.activeModelVersion ? (
@@ -28,14 +36,11 @@ export function StudyCard({ study }: { study: StudySummary }) {
           <p className="font-medium text-foreground">{study.municipalityCount}</p>
           <p className="text-muted-light">municípios</p>
         </div>
-        <Link
-          href={`/modelos?disease=${encodeURIComponent(study.disease)}`}
-          className="flex items-center gap-1 font-medium text-primary-600 hover:text-primary-700"
-        >
-          Ver modelo
-          <ArrowUpRight className="h-3.5 w-3.5" />
-        </Link>
+        <span className="flex items-center gap-1 font-medium text-primary-600">
+          Explorar
+          <Maximize2 className="h-3.5 w-3.5" />
+        </span>
       </div>
-    </Card>
+    </button>
   );
 }

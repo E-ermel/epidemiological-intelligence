@@ -1,6 +1,13 @@
 import type { DiseaseCode } from "@/types/epidemiology";
 import type { ModelMetadata, ObservedVsPredictedPoint } from "@/types/model";
-import { getModelPredictions, getModelsData } from "@/services/api";
+import {
+  type ApiRetrainExecutionStatus,
+  getModelPredictions,
+  getModelsData,
+  getRetrainExecutionStatus,
+  retrainAllModels as retrainAllModelsApi,
+  retrainModel,
+} from "@/services/api";
 
 export async function getModels(): Promise<ModelMetadata[]> {
   return getModelsData();
@@ -21,4 +28,20 @@ export async function getObservedVsPredicted(
   disease: DiseaseCode
 ): Promise<ObservedVsPredictedPoint[]> {
   return getModelPredictions(disease, SAMPLE_MUNICIPALITY);
+}
+
+export async function retrainDiseaseModel(disease: DiseaseCode): Promise<string> {
+  const { executionName } = await retrainModel(disease);
+  return executionName;
+}
+
+export async function retrainAllModels(): Promise<string> {
+  const { executionName } = await retrainAllModelsApi();
+  return executionName;
+}
+
+export async function getRetrainStatus(
+  executionName: string
+): Promise<ApiRetrainExecutionStatus> {
+  return getRetrainExecutionStatus(executionName);
 }

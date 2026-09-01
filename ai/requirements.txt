@@ -12,6 +12,7 @@ chromadb
 
 google-cloud-bigquery
 google-cloud-storage
+google-cloud-run
 google-api-core
 db-dtypes
 

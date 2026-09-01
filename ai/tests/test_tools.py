@@ -7,6 +7,14 @@ from langchain_core.documents import Document
 from epidemiological_agent.tools import llm_tools
 
 
+def _mock_max_date(monkeypatch, date_str):
+    monkeypatch.setattr(
+        llm_tools,
+        "get_max_reference_date",
+        lambda: pd.Timestamp(date_str),
+    )
+
+
 def _raise(exc):
     def _fn(*args, **kwargs):
         raise exc
@@ -58,6 +66,50 @@ def test_epidemiological_data_tool_returns_records_as_json(monkeypatch):
             "cases": 10,
         }
     ]
+
+
+def test_epidemiological_data_tool_rejects_future_start_date(monkeypatch):
+    _mock_max_date(monkeypatch, "2025-06-30")
+    monkeypatch.setattr(
+        llm_tools,
+        "query_epidemiological_data",
+        _raise(AssertionError("BigQuery should not be queried")),
+    )
+
+    result = llm_tools.epidemiological_data_tool.invoke(
+        {"disease": "ASMA", "start_date": "2026-01-01"}
+    )
+
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert parsed["error_type"] == "date_out_of_range"
+    assert "2025-06-30" in parsed["message"]
+
+
+def test_epidemiological_data_tool_allows_start_date_within_range(monkeypatch):
+    _mock_max_date(monkeypatch, "2025-06-30")
+    df = pd.DataFrame(
+        [
+            {
+                "reference_date": pd.Timestamp("2025-01-01"),
+                "disease": "ASMA",
+                "municipality": "PORTO ALEGRE",
+                "cases": 3,
+            }
+        ]
+    )
+    monkeypatch.setattr(
+        llm_tools,
+        "query_epidemiological_data",
+        lambda **kwargs: df,
+    )
+
+    result = llm_tools.epidemiological_data_tool.invoke(
+        {"disease": "ASMA", "start_date": "2025-01-01"}
+    )
+
+    parsed = json.loads(result)
+    assert parsed[0]["cases"] == 3
 
 
 def test_model_metrics_tool_returns_metrics_as_json(monkeypatch):
@@ -179,6 +231,57 @@ def test_model_predictions_tool_returns_message_when_empty(monkeypatch):
     assert result == "No predictions found."
 
 
+def test_climate_summary_tool_returns_summary_as_json(monkeypatch):
+    summary = {
+        "precipitation_sum_mm": {"avg": 12.5, "min": 0.0, "max": 80.0},
+        "temperature_avg_c": {"avg": 21.0, "min": 10.0, "max": 32.0},
+    }
+    monkeypatch.setattr(
+        llm_tools,
+        "get_climate_summary",
+        lambda **kwargs: summary,
+    )
+
+    result = llm_tools.climate_summary_tool.invoke(
+        {"disease": "ASMA", "municipality": "PORTO ALEGRE"}
+    )
+
+    assert json.loads(result) == summary
+
+
+def test_climate_summary_tool_rejects_future_start_date(monkeypatch):
+    _mock_max_date(monkeypatch, "2025-06-30")
+    monkeypatch.setattr(
+        llm_tools,
+        "get_climate_summary",
+        _raise(AssertionError("BigQuery should not be queried")),
+    )
+
+    result = llm_tools.climate_summary_tool.invoke(
+        {"disease": "ASMA", "start_date": "2026-01-01"}
+    )
+
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert parsed["error_type"] == "date_out_of_range"
+    assert "2025-06-30" in parsed["message"]
+
+
+def test_climate_summary_tool_handles_query_failure(monkeypatch):
+    monkeypatch.setattr(
+        llm_tools,
+        "get_climate_summary",
+        _raise(Exception("query failed")),
+    )
+
+    result = llm_tools.climate_summary_tool.invoke({"disease": "ASMA"})
+
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert parsed["source"] == "bigquery"
+    assert parsed["error_type"] == "query_failed"
+
+
 def test_total_cases_tool_returns_total_as_string(monkeypatch):
     monkeypatch.setattr(
         llm_tools,
@@ -191,6 +294,24 @@ def test_total_cases_tool_returns_total_as_string(monkeypatch):
     )
 
     assert result == "42"
+
+
+def test_total_cases_tool_rejects_future_start_date(monkeypatch):
+    _mock_max_date(monkeypatch, "2025-06-30")
+    monkeypatch.setattr(
+        llm_tools,
+        "get_total_cases",
+        _raise(AssertionError("BigQuery should not be queried")),
+    )
+
+    result = llm_tools.total_cases_tool.invoke(
+        {"disease": "ASMA", "start_date": "2026-01-01"}
+    )
+
+    parsed = json.loads(result)
+    assert parsed["status"] == "error"
+    assert parsed["error_type"] == "date_out_of_range"
+    assert "2025-06-30" in parsed["message"]
 
 
 def test_total_cases_tool_handles_query_failure(monkeypatch):

@@ -49,3 +49,19 @@ class PredictionPoint(CamelModel):
     municipality: str
     observed_cases: float
     predicted_cases: float
+
+
+class RetrainResponse(CamelModel):
+    status: str
+    execution_name: str
+
+
+class RetrainExecutionStatus(CamelModel):
+    """Polled by the frontend via GET /models/retrain/status while a
+    retrain is running, so the button can stay disabled until there's a
+    real result instead of just until the trigger call returns."""
+
+    status: str  # "running" | "succeeded" | "failed"
+    log_uri: str | None = None
+    start_time: str | None = None
+    completion_time: str | None = None

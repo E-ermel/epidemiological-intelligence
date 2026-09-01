@@ -29,6 +29,20 @@ resource "google_storage_bucket_iam_member" "ds_artifact_writer" {
   }
 }
 
+# storage.objects.list is checked against the *bucket* resource, not an
+# object -- an object-name-prefixed condition (like ds_artifact_writer
+# above) never covers it, no matter the prefix. Without this, every
+# retrain fails at get_next_version() (which lists modeling/<disease>/
+# to pick the next version number) with a 403 on storage.objects.list.
+# Same unconditional-objectViewer pattern already used below for
+# airflow_orchestrator and ai.
+resource "google_storage_bucket_iam_member" "ds_artifact_reader" {
+  bucket = var.bucket_name
+  role   = "roles/storage.objectViewer"
+
+  member = "serviceAccount:${google_service_account.data_science_job.email}"
+}
+
 
 resource "google_project_iam_member" "airflow_run_developer" {
   project = var.project_id
@@ -109,5 +123,18 @@ resource "google_secret_manager_secret_iam_member" "ai_openai_secret" {
 
   role = "roles/secretmanager.secretAccessor"
 
+  member = "serviceAccount:${google_service_account.ai.email}"
+}
+
+# Lets the "Retreinar modelo" button (POST /models/{disease}/retrain)
+# start an execution of the data_science job -- scoped to just that
+# job, not project-wide run.developer, same reasoning as
+# github_deployer's per-resource grants in github_deployer.tf.
+resource "google_cloud_run_v2_job_iam_member" "ai_ds_job_run_developer" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_job.data_science.name
+
+  role   = "roles/run.developer"
   member = "serviceAccount:${google_service_account.ai.email}"
 }

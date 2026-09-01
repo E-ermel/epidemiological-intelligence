@@ -16,7 +16,7 @@ function formatOrDash(value: number | null, formatter: (v: number) => string) {
   return value === null ? "—" : formatter(value);
 }
 
-export function DataExplorer() {
+export function DataExplorer({ municipalities }: { municipalities: string[] }) {
   const [disease, setDisease] = useState("");
   const [municipality, setMunicipality] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -72,12 +72,18 @@ export function DataExplorer() {
 
           <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
             Município
-            <input
+            <select
               value={municipality}
               onChange={(e) => setMunicipality(e.target.value)}
-              placeholder="Ex.: Porto Alegre"
-              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-light focus:border-primary-500 focus:outline-none"
-            />
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:border-primary-500 focus:outline-none"
+            >
+              <option value="">Todos</option>
+              {municipalities.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
