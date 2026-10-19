@@ -59,6 +59,31 @@ def get_execution_status(execution_name: str) -> Execution:
     return client.get_execution(name=execution_name)
 
 
+def has_running_execution() -> bool:
+    """
+    True while any execution of the data_science job is still running
+    -- the retrain routes refuse a new one (409) instead of stacking
+    hour-long jobs. Executions come back newest first, and one started
+    by a retrain is always among the most recent, so only the first
+    page is checked rather than the job's whole history.
+    """
+
+    client = run_v2.ExecutionsClient()
+    request = run_v2.ListExecutionsRequest(
+        parent=f"projects/{PROJECT_ID}/locations/{GCP_REGION}/jobs/{DS_JOB_NAME}",
+        page_size=5,
+    )
+
+    first_page = next(iter(client.list_executions(request=request).pages), None)
+    if first_page is None:
+        return False
+
+    return any(
+        summarize_execution_status(execution) == "running"
+        for execution in first_page.executions
+    )
+
+
 def summarize_execution_status(execution: Execution) -> str:
     """
     Collapses an Execution's conditions/task counts into one of

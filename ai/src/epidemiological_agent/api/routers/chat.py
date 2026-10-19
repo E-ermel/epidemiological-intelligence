@@ -1,7 +1,8 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from epidemiological_agent.api.rate_limit import chat_rate_limit
 from epidemiological_agent.api.schemas import (
     ChatRequest,
     ChatResponse,
@@ -16,6 +17,7 @@ router = APIRouter(tags=["chat"])
 @router.post(
     "/chat",
     response_model=ChatResponse,
+    dependencies=[Depends(chat_rate_limit)],
 )
 def chat(
     request: ChatRequest,

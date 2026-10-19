@@ -1,13 +1,15 @@
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from google.api_core.exceptions import GoogleAPICallError
 
 from epidemiological_agent.api.gold_data import load_gold_dataframe
 from epidemiological_agent.api.model_metadata_batch import (
     fetch_model_metadata_for_diseases,
 )
+from epidemiological_agent.api.rate_limit import retrain_rate_limit
 from epidemiological_agent.api.retrain_job import (
     get_execution_status,
+    has_running_execution,
     summarize_execution_status,
     trigger_retrain,
 )
@@ -23,6 +25,26 @@ from epidemiological_agent.tools.model_tools import (
 )
 
 router = APIRouter(tags=["models"])
+
+
+def _start_retrain(disease: str | None) -> RetrainResponse:
+    """Shared by the single-disease and bulk retrain routes."""
+
+    try:
+        if has_running_execution():
+            raise HTTPException(
+                status_code=409,
+                detail="Já existe um retreino em andamento. Aguarde ele terminar.",
+            )
+
+        execution_name = trigger_retrain(disease)
+    except GoogleAPICallError as error:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to start retrain job: {error}",
+        )
+
+    return RetrainResponse(status="started", execution_name=execution_name)
 
 
 @router.get("/models", response_model=list[ModelMetadataResponse])
@@ -74,7 +96,11 @@ def get_model_predictions(
     ]
 
 
-@router.post("/models/{disease}/retrain", response_model=RetrainResponse)
+@router.post(
+    "/models/{disease}/retrain",
+    response_model=RetrainResponse,
+    dependencies=[Depends(retrain_rate_limit)],
+)
 def retrain_model(disease: str) -> RetrainResponse:
     known_diseases = set(load_gold_dataframe()["disease"].unique())
 
@@ -84,15 +110,7 @@ def retrain_model(disease: str) -> RetrainResponse:
             detail=f"Unknown disease: {disease}",
         )
 
-    try:
-        execution_name = trigger_retrain(disease)
-    except GoogleAPICallError as error:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Failed to start retrain job: {error}",
-        )
-
-    return RetrainResponse(status="started", execution_name=execution_name)
+    return _start_retrain(disease)
 
 
 @router.get("/models/retrain/status", response_model=RetrainExecutionStatus)
@@ -134,16 +152,12 @@ def get_retrain_status(execution: str = Query(...)) -> RetrainExecutionStatus:
     )
 
 
-@router.post("/models/retrain", response_model=RetrainResponse)
+@router.post(
+    "/models/retrain",
+    response_model=RetrainResponse,
+    dependencies=[Depends(retrain_rate_limit)],
+)
 def retrain_all_models() -> RetrainResponse:
     """Bulk equivalent of retrain_model -- one job execution, every disease."""
 
-    try:
-        execution_name = trigger_retrain()
-    except GoogleAPICallError as error:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Failed to start retrain job: {error}",
-        )
-
-    return RetrainResponse(status="started", execution_name=execution_name)
+    return _start_retrain(None)

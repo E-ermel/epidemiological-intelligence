@@ -42,6 +42,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
+    // 409 (retreino já em andamento) e 429 (limite de requisições) trazem
+    // uma mensagem pronta para o usuário em `detail` -- ver
+    // ai/src/epidemiological_agent/api/rate_limit.py.
+    if (response.status === 409 || response.status === 429) {
+      const body = await response.json().catch(() => null);
+      if (typeof body?.detail === "string") {
+        throw new ApiError(body.detail, response.status);
+      }
+    }
+
     throw new ApiError(
       `A API retornou um erro (${response.status}).`,
       response.status

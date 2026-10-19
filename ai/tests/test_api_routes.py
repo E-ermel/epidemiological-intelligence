@@ -11,6 +11,7 @@ from epidemiological_agent.api.routers import models as models_router
 from epidemiological_agent.api.routers import overview as overview_router
 from epidemiological_agent.api import gold_data
 from epidemiological_agent.api import model_metadata_batch
+from epidemiological_agent.api.rate_limit import chat_rate_limit, retrain_rate_limit
 
 
 @pytest.fixture
@@ -55,6 +56,17 @@ def _patch_gold_query(monkeypatch, fake_gold_df):
         "query_epidemiological_data",
         lambda *args, **kwargs: fake_gold_df.copy(),
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_retrain_guards(monkeypatch):
+    # Limiters are module-level singletons: without a reset, retrain
+    # POSTs from earlier tests would count against later ones.
+    chat_rate_limit.reset()
+    retrain_rate_limit.reset()
+
+    # The real check lists executions on Cloud Run.
+    monkeypatch.setattr(models_router, "has_running_execution", lambda: False)
 
 
 # ---------------------------------------------------------------------
@@ -347,6 +359,49 @@ def test_retrain_502_when_job_trigger_fails(monkeypatch, client):
     response = client.post("/models/ASMA/retrain")
 
     assert response.status_code == 502
+
+
+def test_retrain_409_while_another_execution_is_running(monkeypatch, client):
+    def fail_if_called(disease=None):
+        raise AssertionError("must not start a second execution")
+
+    monkeypatch.setattr(models_router, "has_running_execution", lambda: True)
+    monkeypatch.setattr(models_router, "trigger_retrain", fail_if_called)
+
+    assert client.post("/models/ASMA/retrain").status_code == 409
+    assert client.post("/models/retrain").status_code == 409
+
+
+def test_retrain_429_after_hourly_limit(monkeypatch, client):
+    monkeypatch.setattr(
+        models_router, "trigger_retrain", lambda disease=None: "executions/x"
+    )
+
+    statuses = [
+        client.post("/models/ASMA/retrain").status_code
+        for _ in range(retrain_rate_limit.max_requests + 1)
+    ]
+
+    assert statuses[:-1] == [200] * retrain_rate_limit.max_requests
+    assert statuses[-1] == 429
+
+
+def test_retrain_limit_ignores_spoofed_forwarded_for(monkeypatch, client):
+    monkeypatch.setattr(
+        models_router, "trigger_retrain", lambda disease=None: "executions/x"
+    )
+
+    # A different fake first entry on every request, same real address
+    # (last entry, appended by Cloud Run's front end) -- still one bucket.
+    statuses = [
+        client.post(
+            "/models/ASMA/retrain",
+            headers={"X-Forwarded-For": f"10.0.0.{i}, 203.0.113.7"},
+        ).status_code
+        for i in range(retrain_rate_limit.max_requests + 1)
+    ]
+
+    assert statuses[-1] == 429
 
 
 # ---------------------------------------------------------------------
