@@ -194,6 +194,13 @@ resource "google_cloud_run_v2_service" "ai" {
         value = "modeling"
       }
 
+      # O chat, os filtros e o retrain chamam a API direto do navegador;
+      # sem isso o CORS do app.py só libera http://localhost:3000.
+      env {
+        name  = "ALLOWED_ORIGINS"
+        value = local.frontend_origins
+      }
+
       env {
         name = "OPENAI_API_KEY"
 

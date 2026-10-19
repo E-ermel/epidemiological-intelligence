@@ -13,6 +13,11 @@ output "data_science_cloud_run_job" {
   value       = google_cloud_run_v2_job.data_science.name
 }
 
+output "frontend_url" {
+  description = "Public URL of the frontend Cloud Run service"
+  value       = google_cloud_run_v2_service.frontend.uri
+}
+
 output "github_actions_workload_identity_provider" {
   description = "Full resource name for the workload_identity_provider input of google-github-actions/auth"
   value       = google_iam_workload_identity_pool_provider.github.name
