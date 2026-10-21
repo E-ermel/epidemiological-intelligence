@@ -4,7 +4,6 @@
 # Used only by GitHub Actions to push Docker images and deploy new
 # Cloud Run revisions. Deliberately separate from the runtime Service
 # Accounts (epidemiological-ai-sa, epidemiological-de-sa,
-# epidemiological-ds-job, airflow-orchestrator) so a compromised CI
 # pipeline cannot act as any of those.
 #
 # This SA does NOT have permission to run `terraform apply` -- see the

@@ -53,5 +53,19 @@ resource "google_workflows_workflow" "pipeline" {
   depends_on = [
     google_project_service.workflows_api,
     google_cloud_run_v2_job_iam_member.pipeline_workflow_run_developer,
+    google_project_iam_member.pipeline_workflow_run_viewer,
   ]
+
+}
+
+# O conector jobs.run acompanha a execução consultando a operação de
+# longa duração (projects/<p>/locations/<r>/operations/<id>), e
+# run.operations.get só existe no nível do projeto -- não dá para
+# conceder por job. run.viewer é só leitura (get/list); disparar os
+# jobs continua restrito aos 4 bindings por job acima.
+resource "google_project_iam_member" "pipeline_workflow_run_viewer" {
+  project = var.project_id
+  role    = "roles/run.viewer"
+
+  member = "serviceAccount:${google_service_account.pipeline_workflow.email}"
 }
