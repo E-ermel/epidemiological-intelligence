@@ -4,6 +4,13 @@ resource "google_project_service" "bigquery_api" {
 
   disable_on_destroy = false
 }
+resource "google_project_service" "workflows_api" {
+  project = var.project_id
+  service = "workflows.googleapis.com"
+
+  disable_on_destroy = false
+}
+
 
 resource "google_project_service" "storage_api" {
   project = var.project_id

@@ -1,0 +1,43 @@
+# Substitui a DAG do Airflow (airflow/dags/epidemiological_pipeline.py).
+# Cada passo usa o conector do Cloud Run, que dispara o job e ESPERA a
+# execução terminar; se um job falhar, o workflow para nesse passo.
+main:
+  steps:
+    - bronze_to_silver:
+        parallel:
+          branches:
+            - inmet:
+                steps:
+                  - run_inmet:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${inmet_job}
+                        connector_params:
+                          timeout: 7200
+            - sinan:
+                steps:
+                  - run_sinan:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${sinan_job}
+                        connector_params:
+                          timeout: 7200
+
+    # O job gold também carrega o resultado no BigQuery (warehouse.py),
+    # que era a task load_gold_bigquery da DAG.
+    - silver_to_gold:
+        call: googleapis.run.v2.projects.locations.jobs.run
+        args:
+          name: ${gold_job}
+          connector_params:
+            timeout: 7200
+
+    - modeling:
+        call: googleapis.run.v2.projects.locations.jobs.run
+        args:
+          name: ${ds_job}
+          connector_params:
+            timeout: 7200
+
+    - done:
+        return: "Pipeline concluído"

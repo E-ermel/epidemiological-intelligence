@@ -1,6 +1,6 @@
 import pandas as pd
 
-from epidemiological_de import config, storage
+from epidemiological_de import config, storage, warehouse
 from epidemiological_de.gold.transform import (
     aggregate_municipality_monthly,
     aggregate_station_monthly,
@@ -75,6 +75,9 @@ def run() -> pd.DataFrame:
             f"Gold row count mismatch: "
             f"original={original_count}, stored={stored_count}"
         )
+
+    loaded_rows = warehouse.load_dataframe(gold_df, config.GOLD_BIGQUERY_TABLE_ID)
+    print("BigQuery:", loaded_rows, "linhas em", config.GOLD_BIGQUERY_TABLE_ID)
 
     return gold_df
 
