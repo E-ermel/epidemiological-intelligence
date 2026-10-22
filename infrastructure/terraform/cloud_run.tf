@@ -90,6 +90,16 @@ locals {
     gold = {
       module = "epidemiological_de.gold.pipeline"
     }
+
+    # Ingestão (fonte -> bronze) separada da transformação: pode ser
+    # repetida sem reprocessar o silver, e vice-versa.
+    ibge-ingest = {
+      module = "epidemiological_de.ibge.ingest"
+    }
+
+    ibge = {
+      module = "epidemiological_de.ibge.pipeline"
+    }
   }
 
   de_image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.de_repository_id}/${var.de_image_name}:${var.de_image_tag}"

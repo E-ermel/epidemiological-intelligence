@@ -4,3 +4,4 @@ pyarrow
 gcsfs
 google-cloud-storage
 google-cloud-bigquery
+requests

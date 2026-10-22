@@ -275,29 +275,19 @@ jobs:
           docker push \
             ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DE_REPOSITORY }}/${{ env.DE_IMAGE }}:${{ github.sha }}
 
-      - name: Deploy INMET Cloud Run Job
+      # Todos os jobs de DE usam a mesma imagem (só muda o módulo); a
+      # lista precisa acompanhar local.de_jobs em
+      # infrastructure/terraform/cloud_run.tf.
+      - name: Deploy Data Engineering Cloud Run Jobs
         if: ${{ inputs.component == 'data-engineering' || inputs.component == 'all' }}
+        env:
+          DE_JOBS: inmet sinan gold ibge-ingest ibge
         run: |
-          gcloud run jobs update epidemiological-de-inmet \
-            --project=${{ vars.GCP_PROJECT_ID }} \
-            --region=${{ vars.GCP_REGION }} \
-            --image=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DE_REPOSITORY }}/${{ env.DE_IMAGE }}:${{ github.sha }} \
-            --quiet
-
-      - name: Deploy SINAN Cloud Run Job
-        if: ${{ inputs.component == 'data-engineering' || inputs.component == 'all' }}
-        run: |
-          gcloud run jobs update epidemiological-de-sinan \
-            --project=${{ vars.GCP_PROJECT_ID }} \
-            --region=${{ vars.GCP_REGION }} \
-            --image=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DE_REPOSITORY }}/${{ env.DE_IMAGE }}:${{ github.sha }} \
-            --quiet
-
-      - name: Deploy GOLD Cloud Run Job
-        if: ${{ inputs.component == 'data-engineering' || inputs.component == 'all' }}
-        run: |
-          gcloud run jobs update epidemiological-de-gold \
-            --project=${{ vars.GCP_PROJECT_ID }} \
-            --region=${{ vars.GCP_REGION }} \
-            --image=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DE_REPOSITORY }}/${{ env.DE_IMAGE }}:${{ github.sha }} \
-            --quiet
+          for job in $DE_JOBS; do
+            echo "Updating epidemiological-de-$job"
+            gcloud run jobs update "epidemiological-de-$job" \
+              --project=${{ vars.GCP_PROJECT_ID }} \
+              --region=${{ vars.GCP_REGION }} \
+              --image=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DE_REPOSITORY }}/${{ env.DE_IMAGE }}:${{ github.sha }} \
+              --quiet
+          done
