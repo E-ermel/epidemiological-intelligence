@@ -30,7 +30,7 @@ resource "google_cloud_run_v2_job_iam_member" "pipeline_workflow_run_developer" 
   for_each = local.pipeline_jobs
 
   project  = var.project_id
-  location = var.region
+  location = each.value.location
   name     = each.value.name
 
   role   = "roles/run.developer"

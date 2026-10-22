@@ -280,14 +280,25 @@ jobs:
       # infrastructure/terraform/cloud_run.tf.
       - name: Deploy Data Engineering Cloud Run Jobs
         if: ${{ inputs.component == 'data-engineering' || inputs.component == 'all' }}
+        # Formato job:região -- precisa acompanhar local.de_jobs em
+        # cloud_run.tf. Os de ingestão rodam no Brasil (var.ingest_region),
+        # os demais em GCP_REGION; a imagem vem sempre do Artifact
+        # Registry de GCP_REGION.
         env:
-          DE_JOBS: inmet sinan gold ibge-ingest ibge
+          DE_JOBS: >-
+            inmet:${{ vars.GCP_REGION }}
+            sinan:${{ vars.GCP_REGION }}
+            gold:${{ vars.GCP_REGION }}
+            ibge-ingest:southamerica-east1
+            ibge:${{ vars.GCP_REGION }}
         run: |
-          for job in $DE_JOBS; do
-            echo "Updating epidemiological-de-$job"
+          for entry in $DE_JOBS; do
+            job="${entry%%:*}"
+            region="${entry##*:}"
+            echo "Updating epidemiological-de-$job ($region)"
             gcloud run jobs update "epidemiological-de-$job" \
               --project=${{ vars.GCP_PROJECT_ID }} \
-              --region=${{ vars.GCP_REGION }} \
+              --region="$region" \
               --image=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DE_REPOSITORY }}/${{ env.DE_IMAGE }}:${{ github.sha }} \
               --quiet
           done

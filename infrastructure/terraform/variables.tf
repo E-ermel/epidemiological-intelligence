@@ -9,6 +9,12 @@ variable "region" {
   default     = "us-central1"
 }
 
+variable "ingest_region" {
+  description = "Region for the source -> bronze ingestion jobs. Brazilian government endpoints (IBGE, DATASUS, INMET) time out from US regions (geo-blocking), so these jobs run in Brazil."
+  type        = string
+  default     = "southamerica-east1"
+}
+
 variable "bucket_name" {
   description = "Data Lake bucket name"
   type        = string

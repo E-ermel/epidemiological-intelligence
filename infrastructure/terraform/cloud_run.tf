@@ -60,8 +60,12 @@ resource "google_cloud_run_v2_job" "data_science" {
     }
   }
   lifecycle {
+    # client/client_version são reescritos a cada `gcloud run jobs
+    # update` do workflow Deploy -- não são gerenciados aqui.
     ignore_changes = [
-      template[0].template[0].containers[0].image
+      template[0].template[0].containers[0].image,
+      client,
+      client_version,
     ]
   }
 
@@ -78,27 +82,36 @@ resource "google_cloud_run_v2_job" "data_science" {
 # Cloud Run Jobs - Data Engineering
 # ============================================================
 locals {
+  # region: os jobs de ingestão (fonte -> bronze) rodam no Brasil porque
+  # IBGE/DATASUS/INMET não respondem a conexões vindas dos EUA
+  # (bloqueio geográfico, confirmado com curl a partir do Cloud Run). Os
+  # de transformação ficam junto do resto, em var.region.
   de_jobs = {
     inmet = {
       module = "epidemiological_de.inmet.pipeline"
+      region = var.region
     }
 
     sinan = {
       module = "epidemiological_de.sinan.pipeline"
+      region = var.region
     }
 
     gold = {
       module = "epidemiological_de.gold.pipeline"
+      region = var.region
     }
 
     # Ingestão (fonte -> bronze) separada da transformação: pode ser
     # repetida sem reprocessar o silver, e vice-versa.
     ibge-ingest = {
       module = "epidemiological_de.ibge.ingest"
+      region = var.ingest_region
     }
 
     ibge = {
       module = "epidemiological_de.ibge.pipeline"
+      region = var.region
     }
   }
 
@@ -110,7 +123,7 @@ resource "google_cloud_run_v2_job" "de" {
 
   project  = var.project_id
   name     = "epidemiological-de-${each.key}"
-  location = var.region
+  location = each.value.region
 
   deletion_protection = false
 
@@ -137,8 +150,12 @@ resource "google_cloud_run_v2_job" "de" {
     }
   }
   lifecycle {
+    # client/client_version são reescritos a cada `gcloud run jobs
+    # update` do workflow Deploy -- não são gerenciados aqui.
     ignore_changes = [
-      template[0].template[0].containers[0].image
+      template[0].template[0].containers[0].image,
+      client,
+      client_version,
     ]
   }
 

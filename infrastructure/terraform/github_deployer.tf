@@ -89,7 +89,7 @@ resource "google_cloud_run_v2_job_iam_member" "github_deployer_de_run_developer"
   for_each = google_cloud_run_v2_job.de
 
   project  = var.project_id
-  location = var.region
+  location = each.value.location
   name     = each.value.name
 
   role   = "roles/run.developer"
