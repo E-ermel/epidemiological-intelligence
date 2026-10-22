@@ -3,24 +3,27 @@ import pandas as pd
 from epidemiological_de import config, storage, warehouse
 from epidemiological_de.gold.transform import (
     aggregate_municipality_monthly,
-    aggregate_station_monthly,
+    attach_municipality,
     join_gold,
-    normalize_municipality,
 )
 
 
 def run() -> pd.DataFrame:
 
-    inmet = pd.read_parquet(config.INMET_SILVER_PATH)
+    # Agregado estação × mês e mapa estação -> município, ambos gerados
+    # pelo pipeline do INMET -- o silver horário (Brasil todo) não é
+    # carregado aqui.
+    station_monthly = pd.read_parquet(config.INMET_STATION_MONTHLY_SILVER_PATH)
+    station_map = pd.read_parquet(config.INMET_STATIONS_SILVER_PATH)
     sinan = pd.read_parquet(config.SINAN_SILVER_PATH)
 
-    inmet_gold_base = normalize_municipality(inmet)
-    inmet_station_monthly = aggregate_station_monthly(inmet_gold_base)
-    inmet_monthly = aggregate_municipality_monthly(inmet_station_monthly)
+    inmet_monthly = aggregate_municipality_monthly(
+        attach_municipality(station_monthly, station_map)
+    )
 
     duplicates = (
         inmet_monthly
-        .groupby(["municipality", "year", "month"])
+        .groupby(["municipality_code", "year", "month"])
         .size()
         .loc[lambda counts: counts > 1]
     )

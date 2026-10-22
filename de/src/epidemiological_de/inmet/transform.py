@@ -30,8 +30,10 @@ FIELD_INDICES = {
     "wind_speed_ms": 18,
 }
 
+# INMET_<região>_<UF>_<código>_<nome>_<dd-mm-aaaa>... (qualquer UF; antes
+# o padrão só aceitava S_RS, da época em que o bronze era só do RS).
 MUNICIPALITY_FROM_FILE_PATTERN = re.compile(
-    r"INMET_S_RS_[A-Z0-9]+_(.*?)_\d{2}-\d{2}-\d{4}"
+    r"INMET_[A-Z]{1,2}_[A-Z]{2}_[A-Z0-9]+_(.*?)_\d{2}-\d{2}-\d{4}"
 )
 HOUR_UTC_SUFFIX_PATTERN = re.compile(r"\s*UTC$")
 HOUR_HHMM_PATTERN = re.compile(r"^\d{4}$")
@@ -140,3 +142,33 @@ def standardize_inmet_silver(df: pd.DataFrame) -> pd.DataFrame:
     df["year"] = df["timestamp"].dt.year
 
     return df
+
+
+def aggregate_station_monthly(inmet_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Horário -> estação × mês. Feito no pipeline do INMET, ano a ano,
+    para o gold não precisar carregar o silver horário do Brasil todo
+    (~5 milhões de linhas por ano).
+    """
+
+    inmet_df = inmet_df.copy()
+    inmet_df["year"] = inmet_df["timestamp"].dt.year
+    inmet_df["month"] = inmet_df["timestamp"].dt.month
+
+    # dropna=False mantém timestamps inválidos como grupo próprio, como o
+    # groupBy do Spark do notebook original.
+    return inmet_df.groupby(
+        ["station_code", "year", "month"],
+        as_index=False,
+        dropna=False,
+    ).agg(
+        precipitation_sum_mm=("precipitation_mm", lambda s: s.sum(min_count=1)),
+        precipitation_avg_observation_mm=("precipitation_mm", "mean"),
+        precipitation_max_observation_mm=("precipitation_mm", "max"),
+        temperature_avg_c=("temperature_c", "mean"),
+        dew_point_avg_c=("dew_point_temperature_c", "mean"),
+        relative_humidity_avg_pct=("relative_humidity_pct", "mean"),
+        atmospheric_pressure_avg_mb=("atmospheric_pressure_mb", "mean"),
+        wind_speed_avg_ms=("wind_speed_ms", "mean"),
+        wind_gust_max_ms=("wind_gust_ms", "max"),
+    )

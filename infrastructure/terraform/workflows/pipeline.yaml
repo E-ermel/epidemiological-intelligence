@@ -1,8 +1,40 @@
-# Substitui a DAG do Airflow (airflow/dags/epidemiological_pipeline.py).
+# Orquestração do pipeline (substituiu a DAG do Airflow).
 # Cada passo usa o conector do Cloud Run, que dispara o job e ESPERA a
 # execução terminar; se um job falhar, o workflow para nesse passo.
+#
+# fonte -> bronze (ingestão, em southamerica-east1)
+#   -> dim_municipality (IBGE)
+#   -> silver (INMET usa a dim + malha para ligar estação a município)
+#   -> gold (+ BigQuery) -> modelagem
 main:
   steps:
+    - ingest:
+        parallel:
+          branches:
+            - ibge:
+                steps:
+                  - run_ibge_ingest:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${ibge_ingest_job}
+                        connector_params:
+                          timeout: 7200
+            - inmet:
+                steps:
+                  - run_inmet_ingest:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${inmet_ingest_job}
+                        connector_params:
+                          timeout: 7200
+
+    - dim_municipality:
+        call: googleapis.run.v2.projects.locations.jobs.run
+        args:
+          name: ${ibge_job}
+          connector_params:
+            timeout: 7200
+
     - bronze_to_silver:
         parallel:
           branches:
@@ -23,8 +55,7 @@ main:
                         connector_params:
                           timeout: 7200
 
-    # O job gold também carrega o resultado no BigQuery (warehouse.py),
-    # que era a task load_gold_bigquery da DAG.
+    # O job gold também carrega o resultado no BigQuery (warehouse.py).
     - silver_to_gold:
         call: googleapis.run.v2.projects.locations.jobs.run
         args:

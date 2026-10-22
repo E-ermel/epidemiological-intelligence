@@ -12,15 +12,17 @@ from epidemiological_de import config, ingestion
 
 MUNICIPIOS_FILE = "municipios.json"
 MALHA_METADADOS_FILE = "malha_municipios_metadados.json"
+MALHA_FILE = "malha_municipios.geojson"
 
 FILES = {
     MUNICIPIOS_FILE: config.IBGE_MUNICIPIOS_URL,
     MALHA_METADADOS_FILE: config.IBGE_MALHA_METADADOS_URL,
+    MALHA_FILE: config.IBGE_MALHA_URL,
 }
 
 
 def run(session: requests.Session | None = None, root: str | None = None) -> dict[str, str | None]:
-    session = session or requests.Session()
+    session = session or ingestion.new_session()
     written: dict[str, str | None] = {}
 
     for filename, url in FILES.items():

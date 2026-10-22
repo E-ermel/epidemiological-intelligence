@@ -113,6 +113,11 @@ locals {
       module = "epidemiological_de.ibge.pipeline"
       region = var.region
     }
+
+    inmet-ingest = {
+      module = "epidemiological_de.inmet.ingest"
+      region = var.ingest_region
+    }
   }
 
   de_image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.de_repository_id}/${var.de_image_name}:${var.de_image_tag}"

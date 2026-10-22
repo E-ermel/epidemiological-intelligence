@@ -32,31 +32,36 @@ MANIFEST_SUFFIX = ".manifest.json"
 
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
+# Alguns portais do governo cortam a conexão de clientes sem cara de
+# navegador (o INMET derruba o User-Agent padrão do curl, por exemplo).
+DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+    )
+}
 
-def http_get(
-    url: str,
-    *,
-    session: requests.Session | None = None,
-    timeout: int = 120,
-    retries: int = 4,
-    backoff_seconds: float = 5.0,
-) -> bytes:
+DOWNLOAD_CHUNK_BYTES = 8 * 1024 * 1024
+
+
+def new_session() -> requests.Session:
+    session = requests.Session()
+    session.headers.update(DEFAULT_HEADERS)
+    return session
+
+
+def _with_retry(url: str, request, *, retries: int, backoff_seconds: float):
     """
-    GET com retry e backoff exponencial para falhas transitórias (rede,
-    429, 5xx). Erros 4xx que não sejam 429 falham na hora: URL errada
-    não melhora tentando de novo.
-
-    Lê a resposta inteira em memória -- serve para as respostas de API
-    (alguns MB). Arquivos grandes (zips do INMET, .dbc do DATASUS)
-    terão um download em streaming próprio.
+    Executa `request()` com retry e backoff exponencial para falhas
+    transitórias (rede, 429, 5xx). Erros 4xx que não sejam 429 falham
+    na hora: URL errada não melhora tentando de novo.
     """
 
-    session = session or requests.Session()
     last_error: Exception | None = None
 
     for attempt in range(retries):
         try:
-            response = session.get(url, timeout=timeout)
+            response = request()
 
             if response.status_code in RETRYABLE_STATUS:
                 last_error = requests.HTTPError(
@@ -64,7 +69,7 @@ def http_get(
                 )
             else:
                 response.raise_for_status()
-                return response.content
+                return response
 
         except (requests.ConnectionError, requests.Timeout) as error:
             last_error = error
@@ -75,6 +80,29 @@ def http_get(
     raise RuntimeError(
         f"Falha ao baixar {url} após {retries} tentativas: {last_error}"
     ) from last_error
+
+
+def http_get(
+    url: str,
+    *,
+    session: requests.Session | None = None,
+    timeout: int = 120,
+    retries: int = 4,
+    backoff_seconds: float = 5.0,
+) -> bytes:
+    """
+    GET com a resposta inteira em memória -- para respostas de API
+    (alguns MB). Arquivos grandes vão por download_if_changed().
+    """
+
+    session = session or new_session()
+    response = _with_retry(
+        url,
+        lambda: session.get(url, timeout=timeout),
+        retries=retries,
+        backoff_seconds=backoff_seconds,
+    )
+    return response.content
 
 
 def snapshot_dir(source: str, ingestion_date: date, root: str | None = None) -> str:
@@ -168,6 +196,106 @@ def save_snapshot(
     # arquivo que foi gravado por inteiro.
     with fsspec.open(dest, "wb", auto_mkdir=True) as f:
         f.write(content)
+
+    with fsspec.open(dest + MANIFEST_SUFFIX, "w", encoding="utf-8", auto_mkdir=True) as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+
+    return dest
+
+
+def _remote_version(headers) -> dict:
+    """O que identifica a versão de um arquivo remoto, pelos cabeçalhos HTTP."""
+
+    return {
+        "etag": headers.get("ETag"),
+        "last_modified": headers.get("Last-Modified"),
+        "content_length": headers.get("Content-Length"),
+    }
+
+
+def download_if_changed(
+    url: str,
+    dest: str,
+    *,
+    source: str,
+    source_type: str,
+    session: requests.Session | None = None,
+    timeout: int = 300,
+    retries: int = 4,
+    backoff_seconds: float = 5.0,
+) -> str | None:
+    """
+    Download em streaming de um arquivo grande para `dest` (caminho fixo
+    na partição natural da fonte, ex.: bronze/inmet/year=2024/2024.zip),
+    com manifesto ao lado.
+
+    Antes de baixar, um HEAD compara ETag/Last-Modified/tamanho com o
+    manifesto da versão atual: se a fonte não mudou, nada é baixado e a
+    função retorna None. Assim anos "fechados" custam um HEAD por
+    rodada, mas revisões tardias da fonte ainda são captadas.
+    """
+
+    if source_type not in SOURCE_TYPES:
+        raise ValueError(
+            f"source_type inválido: {source_type!r} (use um de {sorted(SOURCE_TYPES)})"
+        )
+
+    session = session or new_session()
+
+    head = _with_retry(
+        url,
+        lambda: session.head(url, timeout=timeout, allow_redirects=True),
+        retries=retries,
+        backoff_seconds=backoff_seconds,
+    )
+    remote = _remote_version(head.headers)
+
+    current = read_manifest(dest)
+    if current is not None and current.get("remote") == remote and remote["etag"]:
+        return None
+
+    response = _with_retry(
+        url,
+        lambda: session.get(url, timeout=timeout, stream=True),
+        retries=retries,
+        backoff_seconds=backoff_seconds,
+    )
+
+    # Grava num temporário e só move para `dest` no fim: uma queda no
+    # meio do download não deixa um arquivo truncado no lugar da versão
+    # anterior, que continua válida.
+    tmp_dest = dest + ".partial"
+    digest = hashlib.sha256()
+    size = 0
+
+    with response, fsspec.open(tmp_dest, "wb", auto_mkdir=True) as f:
+        for chunk in response.iter_content(chunk_size=DOWNLOAD_CHUNK_BYTES):
+            digest.update(chunk)
+            size += len(chunk)
+            f.write(chunk)
+
+    expected = remote["content_length"]
+    if expected is not None and int(expected) != size:
+        fs, tmp_path = fsspec.core.url_to_fs(tmp_dest)
+        fs.rm(tmp_path)
+        raise RuntimeError(
+            f"Download incompleto de {url}: esperado {expected} bytes, recebido {size}"
+        )
+
+    fs, tmp_path = fsspec.core.url_to_fs(tmp_dest)
+    _, dest_path = fsspec.core.url_to_fs(dest)
+    fs.mv(tmp_path, dest_path)
+
+    manifest = {
+        "source": source,
+        "source_type": source_type,
+        "url": url,
+        "filename": dest.rstrip("/").split("/")[-1],
+        "size_bytes": size,
+        "sha256": digest.hexdigest(),
+        "downloaded_at": datetime.now(timezone.utc).isoformat(),
+        "remote": remote,
+    }
 
     with fsspec.open(dest + MANIFEST_SUFFIX, "w", encoding="utf-8", auto_mkdir=True) as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)

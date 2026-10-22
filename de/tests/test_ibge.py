@@ -81,11 +81,15 @@ class StaticSession:
         return type("R", (), {"status_code": 200, "content": self.payloads[url], "raise_for_status": lambda self: None})()
 
 
-def test_ingest_writes_both_files_then_noops_when_unchanged(tmp_path):
+MESH = {"type": "FeatureCollection", "features": []}
+
+
+def test_ingest_writes_all_files_then_noops_when_unchanged(tmp_path):
     session = StaticSession(
         {
             ingest.FILES[ingest.MUNICIPIOS_FILE]: json.dumps(MUNICIPIOS).encode(),
             ingest.FILES[ingest.MALHA_METADADOS_FILE]: json.dumps(METADADOS).encode(),
+            ingest.FILES[ingest.MALHA_FILE]: json.dumps(MESH).encode(),
         }
     )
 

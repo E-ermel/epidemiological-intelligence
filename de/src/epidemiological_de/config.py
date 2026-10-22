@@ -27,12 +27,36 @@ IBGE_MALHA_METADADOS_URL = (
     "?intrarregiao=municipio"
 )
 
+# Polígonos dos municípios, para localizar em que município fica cada
+# estação do INMET (inmet/stations.py). "intermediaria" (~12 MB): a
+# "minima" erra estações perto da divisa.
+IBGE_MALHA_URL = (
+    "https://servicodados.ibge.gov.br/api/v3/malhas/paises/BR"
+    "?intrarregiao=municipio&formato=application/vnd.geo%2Bjson&qualidade=intermediaria"
+)
+
 DIM_MUNICIPALITY_SILVER_PATH = f"gs://{BUCKET}/silver/ibge/dim_municipality/"
 DIM_MUNICIPALITY_TABLE = os.getenv("DIM_MUNICIPALITY_TABLE", "dim_municipality")
 DIM_MUNICIPALITY_TABLE_ID = f"{GCP_PROJECT_ID}.{BIGQUERY_DATASET}.{DIM_MUNICIPALITY_TABLE}"
 
 INMET_BRONZE_PATH = f"gs://{BUCKET}/bronze/inmet/"
 INMET_SILVER_PATH = f"gs://{BUCKET}/silver/inmet/"
+
+# --- INMET (ingestão automática) -----------------------------------
+
+INMET_SOURCE = "inmet"
+
+# Um zip por ano com o CSV horário de todas as estações automáticas.
+INMET_YEARLY_ZIP_URL = "https://portal.inmet.gov.br/uploads/dadoshistoricos/{year}.zip"
+
+# Primeiro ano da série de casos (SINAN/SIH); antes disso o clima não
+# tem com o que cruzar.
+INMET_FIRST_YEAR = int(os.getenv("INMET_FIRST_YEAR", "2015"))
+
+# Estação -> município (inmet/stations.py) e agregado estação × mês;
+# é o que o gold lê, em vez do silver horário.
+INMET_STATIONS_SILVER_PATH = f"gs://{BUCKET}/silver/inmet_stations/"
+INMET_STATION_MONTHLY_SILVER_PATH = f"gs://{BUCKET}/silver/inmet_station_monthly/"
 
 SINAN_BRONZE_PATH = f"gs://{BUCKET}/bronze/sinan/"
 SINAN_SILVER_PATH = f"gs://{BUCKET}/silver/sinan/"

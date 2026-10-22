@@ -291,6 +291,7 @@ jobs:
             gold:${{ vars.GCP_REGION }}
             ibge-ingest:southamerica-east1
             ibge:${{ vars.GCP_REGION }}
+            inmet-ingest:southamerica-east1
         run: |
           for entry in $DE_JOBS; do
             job="${entry%%:*}"
