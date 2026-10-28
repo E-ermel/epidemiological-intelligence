@@ -16,6 +16,37 @@ STATION_METADATA_COLUMNS = ["station_code", "station_name", "state", "latitude",
 
 YEAR_DIR_PATTERN = re.compile(r"year=(\d{4})")
 
+# INMET_CO_DF_A001_BRASILIA_01-01-2026_A_30-09-2026.CSV
+MEMBER_PATTERN = re.compile(
+    r"INMET_[A-Z]{1,2}_[A-Z]{2}_([A-Z0-9]+)_.*_\d{2}-\d{2}-\d{4}_A_(\d{2})-(\d{2})-(\d{4})\.CSV$",
+    re.IGNORECASE,
+)
+
+
+def latest_station_members(names: list[str]) -> list[str]:
+    """
+    Um CSV por estação: o de data final mais recente. O zip do ano
+    corrente pode trazer a versão antiga ao lado da nova (o de 2026 veio
+    com "..._A_31-08-2026" e "..._A_30-09-2026" de cada estação); ler as
+    duas duplicaria cada hora. Nomes fora do padrão passam como estão.
+    """
+
+    latest: dict[str, tuple[tuple[int, int, int], str]] = {}
+    others = []
+
+    for name in names:
+        match = MEMBER_PATTERN.search(name.split("/")[-1])
+        if match is None:
+            others.append(name)
+            continue
+
+        station, day, month, year = match.groups()
+        end = (int(year), int(month), int(day))
+        if station not in latest or end > latest[station][0]:
+            latest[station] = (end, name)
+
+    return sorted(others + [name for _, name in latest.values()])
+
 
 def parse_inmet_file(file_path: str) -> pd.DataFrame:
     lines = extract.read_raw_lines(file_path)
@@ -79,7 +110,7 @@ def process_year(zip_path: str, year: int, silver_root: str) -> tuple[pd.DataFra
     with fsspec.open(zip_path, "rb") as raw, zipfile.ZipFile(raw) as archive, \
             fsspec.open(dest, "wb", auto_mkdir=True) as out:
 
-        members = sorted(name for name in archive.namelist() if name.lower().endswith(".csv"))
+        members = latest_station_members([name for name in archive.namelist() if name.lower().endswith(".csv")])
 
         for member in members:
             lines = re.split(r"\r?\n", archive.read(member).decode("ISO-8859-1"))

@@ -104,6 +104,39 @@ def test_process_year_writes_silver_and_returns_station_monthly(tmp_path):
     assert set(stations["state"]) == {"RS", "SC"}
 
 
+def test_latest_station_members_keeps_newest_version_of_each_station():
+    names = [
+        "2026/INMET_CO_DF_A001_BRASILIA_01-01-2026_A_31-08-2026.CSV",
+        "2026/INMET_CO_DF_A001_BRASILIA_01-01-2026_A_30-09-2026.CSV",
+        "2026/INMET_S_RS_A801_PORTO ALEGRE - JARDIM BOTANICO_01-01-2026_A_31-08-2026.CSV",
+        "fora_do_padrao.CSV",
+    ]
+
+    assert pipeline.latest_station_members(names) == [
+        "2026/INMET_CO_DF_A001_BRASILIA_01-01-2026_A_30-09-2026.CSV",
+        "2026/INMET_S_RS_A801_PORTO ALEGRE - JARDIM BOTANICO_01-01-2026_A_31-08-2026.CSV",
+        "fora_do_padrao.CSV",
+    ]
+
+
+def test_process_year_reads_only_newest_file_of_duplicated_station(tmp_path):
+    import pandas as pd
+
+    zip_path = tmp_path / "2026.zip"
+    _write_year_zip(
+        zip_path,
+        {
+            "INMET_S_RS_A801_PORTO ALEGRE_01-01-2026_A_31-08-2026.CSV": (HEADER, (DATA_ROW,)),
+            "INMET_S_RS_A801_PORTO ALEGRE_01-01-2026_A_30-09-2026.CSV": (HEADER, (DATA_ROW, DATA_ROW.replace("0000 UTC", "0100 UTC"))),
+        },
+    )
+    silver_root = str(tmp_path / "silver")
+
+    pipeline.process_year(str(zip_path), 2026, silver_root)
+
+    assert len(pd.read_parquet(silver_root)) == 2
+
+
 def test_process_year_replaces_previous_partition(tmp_path):
     import pandas as pd
 
