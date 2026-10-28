@@ -1,264 +1,23 @@
-import time
-from functools import lru_cache
+"""
+Consultas ao gold usadas pela rota /data e pelas ferramentas do chat.
+
+Os filtros (doença, UF, município por código ou por nome, período)
+são os mesmos de tools/gold_queries.py. Sem município, os registros
+vêm agregados por mês -- o gold nacional tem ~10 milhões de linhas e
+não cabe numa resposta.
+"""
 
 import pandas as pd
-from google.cloud import bigquery
 
-from epidemiological_agent.config import (
-    PROJECT_ID,
-    BIGQUERY_DATASET,
-    BIGQUERY_TABLE
+from epidemiological_agent.tools.gold_queries import (
+    GOLD_TABLE,
+    STATE_NAMES,
+    GoldFilters,
+    run_query,
+    where_clause,
 )
 
-
-@lru_cache(maxsize=1)
-def _get_bigquery_client() -> bigquery.Client:
-    # Constructing a client does credential discovery on every call;
-    # bigquery.Client is documented safe to reuse across queries.
-    return bigquery.Client(project=PROJECT_ID)
-
-
-# Same TTL-cache shape as gold_data.py's load_gold_dataframe -- the
-# Gold table only advances when the DE pipeline runs, so a few
-# minutes of staleness on "what's the latest date" is a non-issue.
-_MAX_DATE_CACHE_TTL_SECONDS = 300
-_max_date_cache: dict[str, tuple[float, pd.Timestamp | None]] = {}
-
-
-def get_max_reference_date() -> pd.Timestamp | None:
-    """
-    Most recent reference_date present in the Gold table.
-
-    Used to tell apart a request for a period the project genuinely
-    has no data for (e.g. the user asking about 2026 when records
-    stop in 2025) from an ordinary empty filter combination.
-    """
-
-    cached = _max_date_cache.get("max_date")
-
-    if cached is not None:
-        cached_at, cached_value = cached
-
-        if time.time() - cached_at < _MAX_DATE_CACHE_TTL_SECONDS:
-            return cached_value
-
-    client = _get_bigquery_client()
-
-    table = (
-        f"{PROJECT_ID}."
-        f"{BIGQUERY_DATASET}."
-        f"{BIGQUERY_TABLE}"
-    )
-
-    row = next(
-        client
-        .query(f"SELECT MAX(reference_date) AS max_date FROM `{table}`")
-        .result()
-    )
-
-    max_date = row["max_date"]
-
-    if max_date is not None:
-        max_date = pd.Timestamp(max_date)
-
-    _max_date_cache["max_date"] = (time.time(), max_date)
-
-    return max_date
-
-
-def query_epidemiological_data(
-    disease: str | None = None,
-    municipality: str | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-) -> pd.DataFrame:
-
-    client = _get_bigquery_client()
-
-    table = (
-        f"{PROJECT_ID}."
-        f"{BIGQUERY_DATASET}."
-        f"{BIGQUERY_TABLE}"
-    )
-    
-    query = f"""
-        SELECT 
-            reference_date,
-            disease,
-            municipality,
-            cases,
-            precipitation_sum_mm,
-            precipitation_max_observation_mm,
-            temperature_avg_c,
-            dew_point_avg_c,
-            relative_humidity_avg_pct,
-            atmospheric_pressure_avg_mb,
-            wind_speed_avg_ms,
-            wind_gust_max_ms
-        FROM `{table}`
-        WHERE 1 = 1
-    """
-    
-    parameters = []
-    
-    if disease is not None:
-        query += """
-            AND UPPER(disease) = UPPER(@disease)
-        """
-
-        parameters.append(
-            bigquery.ScalarQueryParameter(
-                "disease",
-                "STRING",
-                disease,
-            )
-        )
-        
-    if municipality is not None:
-        query += """ AND UPPER(municipality) = UPPER(@municipality)"""
-        
-        parameters.append(
-            bigquery.ScalarQueryParameter(
-                "municipality", "STRING", municipality
-            )
-        )
-        
-    if start_date is not None:
-        query += """
-            AND reference_date >= @start_date
-        """
-
-        parameters.append(
-            bigquery.ScalarQueryParameter(
-                "start_date",
-                "TIMESTAMP",
-                start_date,
-            )
-        )
-
-    if end_date is not None:
-        query += """
-            AND reference_date <= @end_date
-        """
-
-        parameters.append(
-            bigquery.ScalarQueryParameter(
-                "end_date",
-                "TIMESTAMP",
-                end_date,
-            )
-        )
-
-    query += """
-        ORDER BY
-            municipality,
-            reference_date
-    """
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=parameters
-    )
-    
-    result = client.query(query, job_config=job_config)
-    
-    return result.to_dataframe()
-
-def get_total_cases(
-    disease: str,
-    municipality: str | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-) -> int:
-
-    client = _get_bigquery_client()
-
-    table = (
-        f"{PROJECT_ID}."
-        f"{BIGQUERY_DATASET}."
-        f"{BIGQUERY_TABLE}"
-    )
-
-    query = f"""
-        SELECT
-            SUM(cases) AS total_cases
-        FROM `{table}`
-        WHERE 1 = 1
-    """
-
-    parameters = []
-
-    if disease is not None:
-        query += """
-            AND UPPER(disease) = UPPER(@disease)
-        """
-
-        parameters.append(
-            bigquery.ScalarQueryParameter(
-                "disease",
-                "STRING",
-                disease,
-            )
-        )
-
-    if municipality is not None:
-        query += """
-            AND UPPER(municipality) = UPPER(@municipality)
-        """
-
-        parameters.append(
-            bigquery.ScalarQueryParameter(
-                "municipality",
-                "STRING",
-                municipality,
-            )
-        )
-
-    if start_date is not None:
-        query += """
-            AND reference_date >= @start_date
-        """
-
-        parameters.append(
-            bigquery.ScalarQueryParameter(
-                "start_date",
-                "TIMESTAMP",
-                start_date,
-            )
-        )
-
-    if end_date is not None:
-        query += """
-            AND reference_date <= @end_date
-        """
-
-        parameters.append(
-            bigquery.ScalarQueryParameter(
-                "end_date",
-                "TIMESTAMP",
-                end_date,
-            )
-        )
-
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=parameters
-    )
-
-    result = (
-        client
-        .query(
-            query,
-            job_config=job_config,
-        )
-        .result()
-    )
-
-    row = next(result)
-
-    return int(
-        row["total_cases"] or 0
-    )
-
-
-_CLIMATE_COLUMNS = [
+CLIMATE_COLUMNS = [
     "precipitation_sum_mm",
     "precipitation_max_observation_mm",
     "temperature_avg_c",
@@ -269,130 +28,144 @@ _CLIMATE_COLUMNS = [
     "wind_gust_max_ms",
 ]
 
+# Mantido para quem importava o nome antigo.
+_CLIMATE_COLUMNS = CLIMATE_COLUMNS
+
+
+def _filters(disease, municipality, start_date, end_date, state, municipality_code) -> GoldFilters:
+    return GoldFilters(
+        diseases=(disease,) if disease else (),
+        state=state,
+        municipality_code=municipality_code,
+        municipality=municipality,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+def get_max_reference_date() -> pd.Timestamp | None:
+    """
+    Most recent reference_date present in the Gold table.
+
+    Used to tell apart a request for a period the project genuinely
+    has no data for from an ordinary empty filter combination.
+    """
+
+    df = run_query(f"SELECT MAX(reference_date) AS max_date FROM {GOLD_TABLE}", [])
+    max_date = df["max_date"].iloc[0] if not df.empty else None
+
+    if max_date is None or pd.isna(max_date):
+        return None
+
+    return pd.Timestamp(max_date).tz_localize(None) if pd.Timestamp(max_date).tzinfo else pd.Timestamp(max_date)
+
+
+def query_epidemiological_data(
+    disease: str | None = None,
+    municipality: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    state: str | None = None,
+    municipality_code: str | None = None,
+) -> pd.DataFrame:
+    """
+    Registros mensais de casos e clima.
+
+    - Com município (código ou nome): uma linha por município × mês ×
+      doença. Um nome sem UF pode trazer homônimos de UFs diferentes;
+      as colunas state/municipality_code permitem distinguir.
+    - Sem município: casos somados e clima médio por mês × doença, na
+      UF filtrada ou no Brasil.
+    """
+
+    filters = _filters(disease, municipality, start_date, end_date, state, municipality_code)
+    where, parameters = where_clause(filters)
+    climate = ", ".join(CLIMATE_COLUMNS)
+
+    if municipality or municipality_code:
+        sql = f"""
+            SELECT
+                reference_date, disease, municipality_name AS municipality,
+                state, municipality_code, cases, {climate}
+            FROM {GOLD_TABLE}
+            WHERE {where}
+            ORDER BY state, municipality_code, reference_date
+        """
+    else:
+        label = STATE_NAMES.get((state or "").upper(), "BRASIL") if state else "BRASIL"
+        averages = ", ".join(f"AVG({column}) AS {column}" for column in CLIMATE_COLUMNS)
+        sql = f"""
+            SELECT
+                reference_date, disease, '{label}' AS municipality,
+                {"@state" if state else "CAST(NULL AS STRING)"} AS state,
+                CAST(NULL AS STRING) AS municipality_code,
+                SUM(cases) AS cases, {averages}
+            FROM {GOLD_TABLE}
+            WHERE {where}
+            GROUP BY reference_date, disease
+            ORDER BY disease, reference_date
+        """
+
+    df = run_query(sql, parameters)
+    if "reference_date" in df.columns:
+        df["reference_date"] = pd.to_datetime(df["reference_date"], utc=True).dt.tz_localize(None)
+    return df
+
+
+def get_total_cases(
+    disease: str | None,
+    municipality: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    state: str | None = None,
+    municipality_code: str | None = None,
+) -> int:
+    where, parameters = where_clause(
+        _filters(disease, municipality, start_date, end_date, state, municipality_code)
+    )
+    df = run_query(f"SELECT SUM(cases) AS total_cases FROM {GOLD_TABLE} WHERE {where}", parameters)
+
+    total = df["total_cases"].iloc[0] if not df.empty else None
+    return int(total) if total is not None and not pd.isna(total) else 0
+
 
 def get_climate_summary(
     disease: str | None = None,
     municipality: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    state: str | None = None,
+    municipality_code: str | None = None,
 ) -> dict:
     """
-    Aggregated (avg/min/max) climate stats over the matching rows --
-    the tool-facing counterpart to get_total_cases, so the agent
-    doesn't have to average a raw JSON record list itself (see
-    epidemiological_data_tool, which returns un-aggregated monthly
-    records).
+    Aggregated (avg/min/max) climate stats over the matching rows.
 
-    Climate columns are duplicated per disease for the same
-    municipality/month (one Gold row per disease), so aggregating
-    straight off the table would double-count a reading once per
-    disease present that month. The DISTINCT in the CTE below
-    collapses that back to one row per municipality/month before
-    aggregating -- a no-op when `disease` is already given, since
-    then there's only one disease's rows to begin with.
+    Climate repeats once per disease for the same municipality/month,
+    so the CTE collapses back to one row per municipality/month before
+    aggregating -- otherwise each reading would count once per disease.
     """
 
-    client = _get_bigquery_client()
-
-    table = (
-        f"{PROJECT_ID}."
-        f"{BIGQUERY_DATASET}."
-        f"{BIGQUERY_TABLE}"
+    where, parameters = where_clause(
+        _filters(disease, municipality, start_date, end_date, state, municipality_code)
     )
-
     select_clause = ",\n            ".join(
-        f"AVG({column}) AS {column}_avg, "
-        f"MIN({column}) AS {column}_min, "
-        f"MAX({column}) AS {column}_max"
-        for column in _CLIMATE_COLUMNS
+        f"AVG({column}) AS {column}_avg, MIN({column}) AS {column}_min, MAX({column}) AS {column}_max"
+        for column in CLIMATE_COLUMNS
     )
-
-    query = f"""
+    sql = f"""
         WITH climate_rows AS (
-            SELECT DISTINCT
-                municipality,
-                reference_date,
-                {", ".join(_CLIMATE_COLUMNS)}
-            FROM `{table}`
-            WHERE 1 = 1
-    """
-
-    parameters = []
-
-    if disease is not None:
-        query += """
-            AND UPPER(disease) = UPPER(@disease)
-        """
-
-        parameters.append(
-            bigquery.ScalarQueryParameter(
-                "disease",
-                "STRING",
-                disease,
-            )
-        )
-
-    if municipality is not None:
-        query += """
-            AND UPPER(municipality) = UPPER(@municipality)
-        """
-
-        parameters.append(
-            bigquery.ScalarQueryParameter(
-                "municipality", "STRING", municipality
-            )
-        )
-
-    if start_date is not None:
-        query += """
-            AND reference_date >= @start_date
-        """
-
-        parameters.append(
-            bigquery.ScalarQueryParameter(
-                "start_date",
-                "TIMESTAMP",
-                start_date,
-            )
-        )
-
-    if end_date is not None:
-        query += """
-            AND reference_date <= @end_date
-        """
-
-        parameters.append(
-            bigquery.ScalarQueryParameter(
-                "end_date",
-                "TIMESTAMP",
-                end_date,
-            )
-        )
-
-    query += f"""
+            SELECT DISTINCT municipality_code, reference_date, {", ".join(CLIMATE_COLUMNS)}
+            FROM {GOLD_TABLE}
+            WHERE {where}
         )
         SELECT
             {select_clause}
         FROM climate_rows
     """
-
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=parameters
-    )
-
-    result = (
-        client
-        .query(
-            query,
-            job_config=job_config,
-        )
-        .result()
-    )
-
-    row = next(result)
+    row = run_query(sql, parameters).iloc[0]
 
     def _none_or_float(value):
-        return None if value is None else float(value)
+        return None if value is None or pd.isna(value) else float(value)
 
     return {
         column: {
@@ -400,5 +173,5 @@ def get_climate_summary(
             "min": _none_or_float(row[f"{column}_min"]),
             "max": _none_or_float(row[f"{column}_max"]),
         }
-        for column in _CLIMATE_COLUMNS
+        for column in CLIMATE_COLUMNS
     }

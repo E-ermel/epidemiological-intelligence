@@ -66,6 +66,7 @@ def epidemiological_data_tool(
     municipality: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    state: str | None = None,
 ) -> str:
     """
     Return detailed monthly epidemiological and climate records.
@@ -78,6 +79,12 @@ def epidemiological_data_tool(
 
     DO NOT use this tool when the user only asks for
     the total number of cases. Use total_cases_tool instead.
+
+    Coverage is all of Brazil. `state` is the two-letter UF code
+    (e.g. "RS", "SP"). Pass it together with `municipality` whenever
+    the state is known: municipality names repeat across states (Santa
+    Maria exists in RS and RN). Without `municipality`, records come
+    aggregated per month for the state (or for Brazil, without state).
     """
     out_of_bounds = _date_range_out_of_bounds_response(start_date)
 
@@ -89,6 +96,7 @@ def epidemiological_data_tool(
         municipality=municipality,
         start_date=start_date,
         end_date=end_date,
+        state=state,
     )
     
     if df.empty:
@@ -210,6 +218,7 @@ def total_cases_tool(
     municipality: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    state: str | None = None,
 ) -> str:
     """
     Return the total number of observed cases for a disease.
@@ -223,6 +232,9 @@ def total_cases_tool(
 
     Prefer this tool over epidemiological_data_tool when
     only the aggregated total is required.
+
+    `state` (two-letter UF code) restricts the total to one state, and
+    disambiguates `municipality` names that exist in several states.
     """
 
     out_of_bounds = _date_range_out_of_bounds_response(start_date)
@@ -236,6 +248,7 @@ def total_cases_tool(
             municipality=municipality,
             start_date=start_date,
             end_date=end_date,
+            state=state,
         )
 
         return str(total)
@@ -264,6 +277,7 @@ def climate_summary_tool(
     municipality: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    state: str | None = None,
 ) -> str:
     """
     Return aggregated climate statistics -- average, minimum, and
@@ -274,7 +288,8 @@ def climate_summary_tool(
     (e.g. average rainfall, how hot it was, wind speed in a
     municipality), especially when they want an aggregate
     (average/typical/highest/lowest) rather than a full monthly time
-    series. `disease` and `municipality` are both optional.
+    series. `disease`, `municipality` and `state` (two-letter UF code)
+    are all optional.
 
     DO NOT use this tool for case counts; use total_cases_tool or
     epidemiological_data_tool instead.
@@ -291,6 +306,7 @@ def climate_summary_tool(
             municipality=municipality,
             start_date=start_date,
             end_date=end_date,
+            state=state,
         )
 
         return json.dumps(

@@ -1,24 +1,13 @@
+from dataclasses import replace
+
 import pandas as pd
 from fastapi import APIRouter, Query
 
-from epidemiological_agent.api.gold_data import load_gold_dataframe
+from epidemiological_agent.tools import gold_queries
+from epidemiological_agent.tools.gold_queries import STATE_NAMES, GoldFilters
 from epidemiological_agent.api.schemas_geo import GeoArea
 
 router = APIRouter(tags=["geo"])
-
-# Only Rio Grande do Sul has real pipeline data today (DE/DS only
-# process RS sources). The rest render neutral/disabled on the
-# country-level map until more states are onboarded -- same
-# limitation the frontend mock already documented, just backed by a
-# real RS number now instead of a hardcoded one.
-KNOWN_STATES: dict[str, str] = {
-    "RS": "Rio Grande do Sul",
-    "SC": "Santa Catarina",
-    "PR": "Paraná",
-    "SP": "São Paulo",
-    "RJ": "Rio de Janeiro",
-    "MG": "Minas Gerais",
-}
 
 
 @router.get("/geo/{level}", response_model=list[GeoArea])
@@ -29,42 +18,35 @@ def get_geo(
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
 ) -> list[GeoArea]:
-    df = load_gold_dataframe()
-
-    if disease:
-        wanted = {d.upper() for d in disease}
-        df = df[df["disease"].str.upper().isin(wanted)]
-
-    if start_date is not None:
-        df = df[df["reference_date"] >= pd.Timestamp(start_date)]
-
-    if end_date is not None:
-        df = df[df["reference_date"] <= pd.Timestamp(end_date)]
+    filters = GoldFilters(diseases=tuple(disease), start_date=start_date, end_date=end_date)
 
     if level == "country":
-        total_cases = int(df["cases"].sum(skipna=True))
+        # As 27 UFs sempre, mesmo sem caso no filtro: o mapa desenha todas.
+        cases = gold_queries.cases_by_state(filters).set_index("state")["cases"]
 
         return [
             GeoArea(
                 id=code,
                 name=name,
-                cases=total_cases if code == "RS" else 0,
-                has_data=code == "RS",
+                cases=int(cases.get(code, 0)),
+                has_data=code in cases.index,
             )
-            for code, name in KNOWN_STATES.items()
+            for code, name in STATE_NAMES.items()
         ]
 
-    if level == "state" and state == "RS":
-        totals = df.groupby("municipality")["cases"].sum(skipna=True)
+    if level == "state" and state:
+        municipalities = gold_queries.cases_by_municipality(replace(filters, state=state))
 
         return [
             GeoArea(
-                id=municipality,
-                name=municipality.title(),
-                cases=int(cases),
+                id=row.municipality_code,
+                name=row.municipality_name,
+                cases=int(row.cases),
                 has_data=True,
+                latitude=None if pd.isna(row.latitude) else float(row.latitude),
+                longitude=None if pd.isna(row.longitude) else float(row.longitude),
             )
-            for municipality, cases in totals.items()
+            for row in municipalities.itertuples()
         ]
 
     return []

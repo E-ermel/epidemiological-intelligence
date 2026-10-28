@@ -2,7 +2,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
 from google.api_core.exceptions import GoogleAPICallError
 
-from epidemiological_agent.api.gold_data import load_gold_dataframe
+from epidemiological_agent.tools import gold_queries
 from epidemiological_agent.api.model_metadata_batch import (
     fetch_model_metadata_for_diseases,
 )
@@ -53,7 +53,7 @@ def get_models() -> list[ModelMetadataResponse]:
     # ai/ has no MODEL_CONFIG of its own (that lives in data_science/,
     # a separately deployed service), and this way a disease that shows
     # up in new data doesn't need a code change here to be picked up.
-    diseases = load_gold_dataframe()["disease"].unique()
+    diseases = gold_queries.diseases()
 
     metadata_by_disease = fetch_model_metadata_for_diseases(diseases)
 
@@ -102,7 +102,7 @@ def get_model_predictions(
     dependencies=[Depends(retrain_rate_limit)],
 )
 def retrain_model(disease: str) -> RetrainResponse:
-    known_diseases = set(load_gold_dataframe()["disease"].unique())
+    known_diseases = set(gold_queries.diseases())
 
     if disease not in known_diseases:
         raise HTTPException(

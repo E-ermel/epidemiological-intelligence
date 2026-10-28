@@ -10,9 +10,18 @@ BIGQUERY_DATASET = os.getenv(
     "epidemiological_intelligence",
 )
 
+# Gold nacional. O Cloud Run injeta BIGQUERY_GOLD_TABLE (cloud_run.tf);
+# BIGQUERY_TABLE fica como alternativa para rodar localmente.
 BIGQUERY_TABLE = os.getenv(
-    "BIGQUERY_TABLE",
-    "epidemiology_climate_monthly",
+    "BIGQUERY_GOLD_TABLE",
+    os.getenv("BIGQUERY_TABLE", "epidemiology_climate_monthly_br"),
+)
+
+# Municípios do IBGE (código, nome, UF, centróide): carregada pelo
+# pipeline de DE junto com o gold.
+BIGQUERY_DIM_MUNICIPALITY_TABLE = os.getenv(
+    "BIGQUERY_DIM_MUNICIPALITY_TABLE",
+    "dim_municipality",
 )
 
 # Deployed values (infrastructure/terraform/cloud_run.tf) -- the "ai"
