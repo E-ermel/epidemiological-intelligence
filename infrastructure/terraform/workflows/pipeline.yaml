@@ -38,6 +38,14 @@ main:
                         name: ${sih_ingest_job}
                         connector_params:
                           timeout: 7200
+            - sinan_ingest:
+                steps:
+                  - run_sinan_ingest:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${sinan_ingest_job}
+                        connector_params:
+                          timeout: 7200
 
     - dim_municipality:
         call: googleapis.run.v2.projects.locations.jobs.run
@@ -57,8 +65,6 @@ main:
                         name: ${inmet_job}
                         connector_params:
                           timeout: 7200
-            # Silver do SIH. Ainda não alimenta o gold (vem no gold
-            # nacional), mas já fica atualizado a cada rodada.
             - sih:
                 steps:
                   - run_sih:
@@ -76,7 +82,8 @@ main:
                         connector_params:
                           timeout: 7200
 
-    # O job gold também carrega o resultado no BigQuery (warehouse.py).
+    # Gold nacional (SIH + SINAN + clima por município); o job também
+    # carrega o resultado no BigQuery (warehouse.py).
     - silver_to_gold:
         call: googleapis.run.v2.projects.locations.jobs.run
         args:
@@ -84,12 +91,9 @@ main:
           connector_params:
             timeout: 7200
 
-    - modeling:
-        call: googleapis.run.v2.projects.locations.jobs.run
-        args:
-          name: ${ds_job}
-          connector_params:
-            timeout: 7200
-
+    # Sem passo de modelagem por enquanto: o modelo atual (um GLM com
+    # C(municipality)) não roda no gold nacional, e o substituto sai do
+    # benchmark em data_science/benchmarks/. O job continua existindo
+    # (${ds_job}) para voltar aqui quando o modelo novo estiver pronto.
     - done:
         return: "Pipeline concluído"

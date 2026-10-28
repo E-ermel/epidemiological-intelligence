@@ -294,6 +294,7 @@ jobs:
             inmet-ingest:southamerica-east1
             sih-ingest:southamerica-east1
             sih:${{ vars.GCP_REGION }}
+            sinan-ingest:southamerica-east1
         run: |
           for entry in $DE_JOBS; do
             job="${entry%%:*}"

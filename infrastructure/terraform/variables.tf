@@ -49,9 +49,9 @@ variable "bigquery_dataset_id" {
 }
 
 variable "bigquery_gold_table" {
-  description = "Gold table consumed by the Data Science pipeline"
+  description = "Gold table consumed by the AI service and the Data Science pipeline (national gold)"
   type        = string
-  default     = "epidemiology_climate_monthly"
+  default     = "epidemiology_climate_monthly_br"
 }
 
 variable "data_science_image" {

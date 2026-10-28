@@ -138,6 +138,12 @@ locals {
       parallelism = 9
     }
 
+    # Um arquivo nacional por agravo/ano, ~200 MB no total: uma task.
+    sinan-ingest = {
+      module = "epidemiological_de.sinan.ingest"
+      region = var.ingest_region
+    }
+
     # Silver do SIH: uma task por UF, lendo o bronze no GCS.
     sih = {
       module     = "epidemiological_de.sih.pipeline"

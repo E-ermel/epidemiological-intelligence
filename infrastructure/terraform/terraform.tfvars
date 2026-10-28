@@ -4,7 +4,7 @@ bucket_name = "epidemiological-intelligence"
 
 bigquery_dataset_id = "epidemiological_intelligence"
 
-bigquery_gold_table = "epidemiology_climate_monthly"
+bigquery_gold_table = "epidemiology_climate_monthly_br"
 
 data_science_image = "us-central1-docker.pkg.dev/affable-alpha-506516-r7/epidemiological-ds/modeling:latest"
 
