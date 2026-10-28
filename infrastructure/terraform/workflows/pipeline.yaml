@@ -4,7 +4,8 @@
 #
 # fonte -> bronze (ingestão, em southamerica-east1)
 #   -> dim_municipality (IBGE)
-#   -> silver (INMET usa a dim + malha para ligar estação a município)
+#   -> silver (INMET usa a dim + malha para ligar estação a município;
+#      SIH lê os .dbc por UF)
 #   -> gold (+ BigQuery) -> modelagem
 main:
   steps:
@@ -29,6 +30,14 @@ main:
                         name: ${inmet_ingest_job}
                         connector_params:
                           timeout: 7200
+            - sih_ingest:
+                steps:
+                  - run_sih_ingest:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${sih_ingest_job}
+                        connector_params:
+                          timeout: 7200
 
     - dim_municipality:
         call: googleapis.run.v2.projects.locations.jobs.run
@@ -46,6 +55,16 @@ main:
                       call: googleapis.run.v2.projects.locations.jobs.run
                       args:
                         name: ${inmet_job}
+                        connector_params:
+                          timeout: 7200
+            # Silver do SIH. Ainda não alimenta o gold (vem no gold
+            # nacional), mas já fica atualizado a cada rodada.
+            - sih:
+                steps:
+                  - run_sih:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${sih_job}
                         connector_params:
                           timeout: 7200
             - sinan:

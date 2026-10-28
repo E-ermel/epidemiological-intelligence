@@ -86,7 +86,17 @@ locals {
   # IBGE/DATASUS/INMET não respondem a conexões vindas dos EUA
   # (bloqueio geográfico, confirmado com curl a partir do Cloud Run). Os
   # de transformação ficam junto do resto, em var.region.
-  de_jobs = {
+  #
+  # task_count/parallelism (opcionais): jobs por UF dividem o país
+  # entre tasks (CLOUD_RUN_TASK_INDEX); os demais rodam numa task só.
+  de_job_defaults = {
+    task_count  = 1
+    parallelism = null
+  }
+
+  de_jobs = { for name, job in local.de_job_specs : name => merge(local.de_job_defaults, job) }
+
+  de_job_specs = {
     inmet = {
       module = "epidemiological_de.inmet.pipeline"
       region = var.region
@@ -118,6 +128,22 @@ locals {
       module = "epidemiological_de.inmet.ingest"
       region = var.ingest_region
     }
+
+    # Uma task por UF. Paralelismo limitado para não abrir 27 conexões
+    # simultâneas no FTP do DATASUS.
+    sih-ingest = {
+      module      = "epidemiological_de.sih.ingest"
+      region      = var.ingest_region
+      task_count  = 27
+      parallelism = 9
+    }
+
+    # Silver do SIH: uma task por UF, lendo o bronze no GCS.
+    sih = {
+      module     = "epidemiological_de.sih.pipeline"
+      region     = var.region
+      task_count = 27
+    }
   }
 
   de_image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.de_repository_id}/${var.de_image_name}:${var.de_image_tag}"
@@ -133,6 +159,9 @@ resource "google_cloud_run_v2_job" "de" {
   deletion_protection = false
 
   template {
+    task_count  = each.value.task_count
+    parallelism = each.value.parallelism
+
     template {
       service_account = google_service_account.de.email
 

@@ -58,6 +58,34 @@ INMET_FIRST_YEAR = int(os.getenv("INMET_FIRST_YEAR", "2015"))
 INMET_STATIONS_SILVER_PATH = f"gs://{BUCKET}/silver/inmet_stations/"
 INMET_STATION_MONTHLY_SILVER_PATH = f"gs://{BUCKET}/silver/inmet_station_monthly/"
 
+# --- DATASUS (FTP) -------------------------------------------------
+
+DATASUS_FTP_HOST = "ftp.datasus.gov.br"
+
+# As 27 UFs, na ordem em que os jobs por UF dividem o trabalho entre
+# as tasks do Cloud Run (ver sih/ingest.py).
+UFS = [
+    "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO",
+    "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR",
+    "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
+]
+
+# --- SIH/SUS (internações) -----------------------------------------
+
+SIH_SOURCE = "sih"
+
+# AIH reduzida (RD{UF}{AA}{MM}.dbc), um arquivo por UF e competência de
+# processamento, desde 2008.
+SIH_FTP_DIR = "/dissemin/publicos/SIHSUS/200801_/Dados"
+
+# Primeira competência baixada. Internações de um mês aparecem em
+# competências posteriores, nunca anteriores, então começar no mesmo
+# ano da série de casos não perde nada.
+SIH_FIRST_YEAR = int(os.getenv("SIH_FIRST_YEAR", "2015"))
+
+# Internações por doença × residência × internação × mês, partição por UF.
+SIH_SILVER_PATH = f"gs://{BUCKET}/silver/sih_hospitalizations/"
+
 SINAN_BRONZE_PATH = f"gs://{BUCKET}/bronze/sinan/"
 SINAN_SILVER_PATH = f"gs://{BUCKET}/silver/sinan/"
 

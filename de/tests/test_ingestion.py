@@ -220,3 +220,104 @@ def test_truncated_download_fails_and_keeps_previous_version(tmp_path):
     with open(dest, "rb") as f:
         assert f.read() == b"good-version"
     assert ingestion.read_manifest(dest)["remote"]["etag"] == '"v1"'
+
+
+# ---------------------------------------------------------------------
+# FTP
+# ---------------------------------------------------------------------
+
+
+class FakeFtp:
+    """Servidor FTP falso: `files` = {caminho: bytes}; `drops` derruba as N primeiras transferências."""
+
+    def __init__(self, files, drops=0, truncate=False):
+        self.files, self.drops, self.truncate = files, drops, truncate
+        self.retrievals = 0
+
+    def retrlines(self, command, callback):
+        for path, body in self.files.items():
+            callback(f"02-09-25  09:29PM {len(body):20d} {path.split('/')[-1]}")
+        callback("05-11-23  10:02AM       <DIR>          Auxiliar")
+
+    def retrbinary(self, command, callback, blocksize):
+        self.retrievals += 1
+        body = self.files[command.removeprefix("RETR ")]
+        if self.retrievals <= self.drops:
+            callback(body[:2])
+            raise EOFError("conexão caiu")
+        callback(body[: len(body) // 2] if self.truncate else body)
+
+
+def _ftp_client(server):
+    connections = []
+
+    def connect():
+        connections.append(server)
+        return server
+
+    client = ingestion.FtpClient("ftp.test", connect=connect)
+    return client, connections
+
+
+def _ftp_download(client, dest, remote):
+    return ingestion.ftp_download_if_changed(
+        client, "/dados/RDRS2401.dbc", remote, dest, source="sih", source_type="oficial"
+    )
+
+
+def test_parse_dos_listing_skips_directories():
+    listing = ingestion.parse_dos_listing(
+        [
+            "02-09-25  09:29PM              5275821 RDRS2401.dbc",
+            "05-11-23  10:02AM       <DIR>          Auxiliar",
+        ]
+    )
+
+    assert listing == {"RDRS2401.dbc": {"size": 5275821, "modified": "02-09-25 09:29PM"}}
+
+
+def test_ftp_download_retries_dropped_connection_from_scratch(tmp_path):
+    server = FakeFtp({"/dados/RDRS2401.dbc": b"dbc-bytes"}, drops=1)
+    client, connections = _ftp_client(server)
+    remote = client.list_dir("/dados")["RDRS2401.dbc"]
+    dest = str(tmp_path / "sih" / "uf=RS" / "RDRS2401.dbc")
+
+    assert _ftp_download(client, dest, remote) == dest
+
+    # A primeira tentativa gravou 2 bytes antes de cair; o arquivo final
+    # não pode ter esse lixo no começo.
+    with open(dest, "rb") as f:
+        assert f.read() == b"dbc-bytes"
+    assert len(connections) == 2
+    manifest = ingestion.read_manifest(dest)
+    assert manifest["url"] == "ftp://ftp.test/dados/RDRS2401.dbc"
+    assert manifest["remote"] == remote
+
+
+def test_ftp_download_skips_unchanged_and_refetches_revised(tmp_path):
+    dest = str(tmp_path / "RDRS2401.dbc")
+    server = FakeFtp({"/dados/RDRS2401.dbc": b"v1"})
+    client, _ = _ftp_client(server)
+    _ftp_download(client, dest, {"size": 2, "modified": "02-09-25 09:29PM"})
+
+    assert _ftp_download(client, dest, {"size": 2, "modified": "02-09-25 09:29PM"}) is None
+    assert server.retrievals == 1
+
+    server.files["/dados/RDRS2401.dbc"] = b"v2-revisado"
+    assert _ftp_download(client, dest, {"size": 11, "modified": "10-16-26 05:30PM"}) == dest
+    with open(dest, "rb") as f:
+        assert f.read() == b"v2-revisado"
+
+
+def test_ftp_truncated_download_keeps_previous_version(tmp_path):
+    dest = str(tmp_path / "RDRS2401.dbc")
+    client, _ = _ftp_client(FakeFtp({"/dados/RDRS2401.dbc": b"good"}))
+    _ftp_download(client, dest, {"size": 4, "modified": "a"})
+
+    truncated, _ = _ftp_client(FakeFtp({"/dados/RDRS2401.dbc": b"new-version"}, truncate=True))
+    with pytest.raises(RuntimeError, match="incompleto"):
+        _ftp_download(truncated, dest, {"size": 11, "modified": "b"})
+
+    with open(dest, "rb") as f:
+        assert f.read() == b"good"
+    assert ingestion.read_manifest(dest)["remote"]["modified"] == "a"

@@ -19,8 +19,10 @@ locals {
   pipeline_jobs = {
     ibge_ingest  = google_cloud_run_v2_job.de["ibge-ingest"]
     inmet_ingest = google_cloud_run_v2_job.de["inmet-ingest"]
+    sih_ingest   = google_cloud_run_v2_job.de["sih-ingest"]
     ibge         = google_cloud_run_v2_job.de["ibge"]
     inmet        = google_cloud_run_v2_job.de["inmet"]
+    sih          = google_cloud_run_v2_job.de["sih"]
     sinan        = google_cloud_run_v2_job.de["sinan"]
     gold         = google_cloud_run_v2_job.de["gold"]
     ds           = google_cloud_run_v2_job.data_science
@@ -44,7 +46,7 @@ resource "google_workflows_workflow" "pipeline" {
   project         = var.project_id
   name            = "epidemiological-pipeline"
   region          = var.region
-  description     = "ingestao (ibge, inmet) -> ibge -> inmet + sinan -> gold (+ BigQuery) -> modelagem"
+  description     = "ingestao (ibge, inmet, sih) -> ibge -> inmet + sih + sinan -> gold (+ BigQuery) -> modelagem"
   service_account = google_service_account.pipeline_workflow.id
 
   # job.id = "projects/<p>/locations/<r>/jobs/<nome>", o formato que o

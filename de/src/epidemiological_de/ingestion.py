@@ -12,6 +12,7 @@ quando o conteúdo mudou em relação ao último (sha256), então rodar a
 ingestão de novo sem mudança na fonte não acumula cópias.
 """
 
+import ftplib
 import hashlib
 import json
 import time
@@ -275,29 +276,203 @@ def download_if_changed(
             f.write(chunk)
 
     expected = remote["content_length"]
-    if expected is not None and int(expected) != size:
-        fs, tmp_path = fsspec.core.url_to_fs(tmp_dest)
-        fs.rm(tmp_path)
-        raise RuntimeError(
-            f"Download incompleto de {url}: esperado {expected} bytes, recebido {size}"
-        )
+    _finalize_download(
+        tmp_dest,
+        dest,
+        expected_size=int(expected) if expected is not None else None,
+        manifest={
+            "source": source,
+            "source_type": source_type,
+            "url": url,
+            "filename": dest.rstrip("/").split("/")[-1],
+            "size_bytes": size,
+            "sha256": digest.hexdigest(),
+            "downloaded_at": datetime.now(timezone.utc).isoformat(),
+            "remote": remote,
+        },
+    )
+    return dest
+
+
+def _finalize_download(tmp_dest: str, dest: str, *, expected_size: int | None, manifest: dict) -> None:
+    """
+    Confere o tamanho do temporário, move para `dest` e grava o
+    manifesto. Se o tamanho não bate, apaga o temporário e falha: a
+    versão anterior em `dest` (e seu manifesto) continua intacta.
+    """
 
     fs, tmp_path = fsspec.core.url_to_fs(tmp_dest)
+
+    if expected_size is not None and expected_size != manifest["size_bytes"]:
+        fs.rm(tmp_path)
+        raise RuntimeError(
+            f"Download incompleto de {manifest['url']}: esperado {expected_size} "
+            f"bytes, recebido {manifest['size_bytes']}"
+        )
+
     _, dest_path = fsspec.core.url_to_fs(dest)
     fs.mv(tmp_path, dest_path)
-
-    manifest = {
-        "source": source,
-        "source_type": source_type,
-        "url": url,
-        "filename": dest.rstrip("/").split("/")[-1],
-        "size_bytes": size,
-        "sha256": digest.hexdigest(),
-        "downloaded_at": datetime.now(timezone.utc).isoformat(),
-        "remote": remote,
-    }
 
     with fsspec.open(dest + MANIFEST_SUFFIX, "w", encoding="utf-8", auto_mkdir=True) as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
 
+
+# ---------------------------------------------------------------------
+# FTP (DATASUS)
+# ---------------------------------------------------------------------
+
+FTP_ERRORS = (ftplib.error_temp, ftplib.error_reply, EOFError, OSError)
+
+
+class FtpClient:
+    """
+    Conexão FTP anônima que reconecta e repete em falhas transitórias.
+    O FTP do DATASUS derruba conexões longas com frequência, então cada
+    operação passa por run(), que abre uma conexão nova se a anterior
+    caiu.
+    """
+
+    def __init__(
+        self,
+        host: str,
+        *,
+        timeout: int = 120,
+        retries: int = 4,
+        backoff_seconds: float = 5.0,
+        connect=None,
+    ):
+        self.host = host
+        self.retries = retries
+        self.backoff_seconds = backoff_seconds
+        self._connect = connect or (lambda: _ftp_login(host, timeout))
+        self._ftp = None
+
+    def run(self, action):
+        """Executa `action(ftp)` com retry; cada tentativa recomeça do zero."""
+
+        last_error: Exception | None = None
+
+        for attempt in range(self.retries):
+            try:
+                if self._ftp is None:
+                    self._ftp = self._connect()
+                return action(self._ftp)
+
+            except ftplib.error_perm:
+                # 5xx: arquivo inexistente, permissão... não melhora repetindo.
+                raise
+
+            except FTP_ERRORS as error:
+                last_error = error
+                self._ftp = None
+
+            if attempt < self.retries - 1:
+                time.sleep(self.backoff_seconds * 2**attempt)
+
+        raise RuntimeError(
+            f"Falha no FTP {self.host} após {self.retries} tentativas: {last_error}"
+        ) from last_error
+
+    def list_dir(self, directory: str) -> dict[str, dict]:
+        """
+        {nome: {"size": bytes, "modified": data do servidor}} de uma pasta,
+        num LIST só (o DATASUS não suporta MLSD). Uma revisão do arquivo
+        na fonte muda o tamanho e/ou a data.
+        """
+
+        def action(ftp):
+            lines: list[str] = []
+            ftp.retrlines(f"LIST {directory}", lines.append)
+            return lines
+
+        return parse_dos_listing(self.run(action))
+
+
+def _ftp_login(host: str, timeout: int) -> ftplib.FTP:
+    ftp = ftplib.FTP(host, timeout=timeout)
+    ftp.login()
+    return ftp
+
+
+def parse_dos_listing(lines: list[str]) -> dict[str, dict]:
+    """
+    Formato de listagem do servidor do DATASUS (IIS):
+
+        02-09-25  09:29PM              5275821 RDRS2401.dbc
+        05-11-23  10:02AM       <DIR>          Auxiliar
+    """
+
+    entries: dict[str, dict] = {}
+
+    for line in lines:
+        parts = line.split(maxsplit=3)
+        if len(parts) != 4 or not parts[2].isdigit():
+            continue  # subpasta ou linha fora do padrão
+
+        day, clock, size, name = parts
+        entries[name] = {"size": int(size), "modified": f"{day} {clock}"}
+
+    return entries
+
+
+def ftp_download_if_changed(
+    client: FtpClient,
+    remote_path: str,
+    remote: dict,
+    dest: str,
+    *,
+    source: str,
+    source_type: str,
+) -> str | None:
+    """
+    Baixa `remote_path` para `dest` com manifesto, se o arquivo remoto
+    (`remote`, uma entrada de FtpClient.list_dir) mudou desde a última
+    ingestão. Mesmo contrato de download_if_changed(): None quando não
+    há mudança, e a versão anterior sobrevive a downloads incompletos.
+    """
+
+    if source_type not in SOURCE_TYPES:
+        raise ValueError(
+            f"source_type inválido: {source_type!r} (use um de {sorted(SOURCE_TYPES)})"
+        )
+
+    current = read_manifest(dest)
+    if current is not None and current.get("remote") == remote:
+        return None
+
+    tmp_dest = dest + ".partial"
+
+    def fetch(ftp):
+        digest = hashlib.sha256()
+        size = 0
+
+        with fsspec.open(tmp_dest, "wb", auto_mkdir=True) as f:
+
+            def write(chunk: bytes):
+                nonlocal size
+                digest.update(chunk)
+                size += len(chunk)
+                f.write(chunk)
+
+            ftp.retrbinary(f"RETR {remote_path}", write, blocksize=DOWNLOAD_CHUNK_BYTES)
+
+        return digest.hexdigest(), size
+
+    sha256, size = client.run(fetch)
+
+    _finalize_download(
+        tmp_dest,
+        dest,
+        expected_size=remote["size"],
+        manifest={
+            "source": source,
+            "source_type": source_type,
+            "url": f"ftp://{client.host}{remote_path}",
+            "filename": dest.rstrip("/").split("/")[-1],
+            "size_bytes": size,
+            "sha256": sha256,
+            "downloaded_at": datetime.now(timezone.utc).isoformat(),
+            "remote": remote,
+        },
+    )
     return dest
