@@ -59,6 +59,11 @@ INMET_FIRST_YEAR = int(os.getenv("INMET_FIRST_YEAR", "2015"))
 # Estação -> município (inmet/stations.py) e agregado estação × mês;
 # é o que o gold lê, em vez do silver horário.
 INMET_STATIONS_SILVER_PATH = f"gs://{BUCKET}/silver/inmet_stations/"
+
+# Resultado de cada ano processado (estação × mês, metadados das
+# estações e o sha256 do zip de origem): um ano só é reprocessado
+# quando o zip dele mudou no bronze.
+INMET_YEARS_SILVER_PATH = f"gs://{BUCKET}/silver/inmet_years/"
 INMET_STATION_MONTHLY_SILVER_PATH = f"gs://{BUCKET}/silver/inmet_station_monthly/"
 
 # --- DATASUS (FTP) -------------------------------------------------

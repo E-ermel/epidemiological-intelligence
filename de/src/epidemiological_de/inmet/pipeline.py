@@ -182,7 +182,64 @@ def print_station_report(station_map: pd.DataFrame) -> None:
         print(far[["station_code", "station_name", "state", "municipality_name", "match_method", "distance_km"]].to_string())
 
 
-def run_pipeline(root: str | None = None) -> None:
+SOURCE_MARKER = "_source.json"
+
+
+def _year_dir(years_root: str, year: int) -> str:
+    return f"{years_root.rstrip('/')}/year={year}"
+
+
+def processed_source(years_root: str, year: int) -> str | None:
+    """sha256 do zip que gerou o resultado guardado do ano, ou None."""
+
+    fs, path = fsspec.core.url_to_fs(f"{_year_dir(years_root, year)}/{SOURCE_MARKER}")
+    if not fs.exists(path):
+        return None
+    with fs.open(path, "r", encoding="utf-8") as f:
+        return json.load(f).get("sha256")
+
+
+def save_year(years_root: str, year: int, sha256: str, station_monthly: pd.DataFrame, stations: pd.DataFrame) -> None:
+    year_dir = _year_dir(years_root, year)
+    storage.clear_path(year_dir)
+
+    for name, df in (("station_monthly", station_monthly), ("stations", stations)):
+        with fsspec.open(f"{year_dir}/{name}.parquet", "wb", auto_mkdir=True) as f:
+            df.to_parquet(f, index=False)
+
+    # Marcador por último: só existe para um ano gravado por inteiro.
+    with fsspec.open(f"{year_dir}/{SOURCE_MARKER}", "w", encoding="utf-8") as f:
+        json.dump({"sha256": sha256}, f)
+
+
+def load_year(years_root: str, year: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+    year_dir = _year_dir(years_root, year)
+    return (
+        pd.read_parquet(f"{year_dir}/station_monthly.parquet"),
+        pd.read_parquet(f"{year_dir}/stations.parquet"),
+    )
+
+
+def run_pipeline(root: str | None = None, paths: dict[str, str] | None = None) -> list[int]:
+    """
+    Processa só os anos cujo zip mudou desde o último processamento
+    (sha256 do manifesto do bronze); os demais vêm do resultado guardado
+    em INMET_YEARS_SILVER_PATH. Na rodada mensal, isso é o ano corrente
+    -- e um ano fechado quando o INMET o revisa. Devolve os anos
+    processados.
+
+    `paths` sobrescreve os destinos padrão (teste local).
+    """
+
+    paths = {
+        "hourly": config.INMET_SILVER_PATH,
+        "years": config.INMET_YEARS_SILVER_PATH,
+        "station_monthly": config.INMET_STATION_MONTHLY_SILVER_PATH,
+        "stations": config.INMET_STATIONS_SILVER_PATH,
+        "dim": config.DIM_MUNICIPALITY_SILVER_PATH,
+        **(paths or {}),
+    }
+
     zips = list_year_zips(root)
     if not zips:
         raise ValueError(
@@ -192,15 +249,29 @@ def run_pipeline(root: str | None = None) -> None:
 
     print("Anos encontrados:", [year for year, _ in zips])
 
-    monthly, stations = [], []
+    monthly, stations, processed = [], [], []
     for year, path in zips:
-        station_monthly, station_metadata = process_year(path, year, config.INMET_SILVER_PATH)
+        manifest = ingestion.read_manifest(path) or {}
+        sha256 = manifest.get("sha256")
+
+        if sha256 is not None and processed_source(paths["years"], year) == sha256:
+            station_monthly, station_metadata = load_year(paths["years"], year)
+            print(f"{year}: zip sem mudança, usando o resultado guardado")
+        else:
+            station_monthly, station_metadata = process_year(path, year, paths["hourly"])
+            if sha256 is not None:
+                save_year(paths["years"], year, sha256, station_monthly, station_metadata)
+            processed.append(year)
+
         monthly.append(station_monthly)
         stations.append(station_metadata)
 
+    print("Anos processados nesta rodada:", processed or "nenhum")
+
     station_monthly = pd.concat(monthly, ignore_index=True)
-    storage.clear_path(config.INMET_STATION_MONTHLY_SILVER_PATH)
-    station_monthly.to_parquet(f"{config.INMET_STATION_MONTHLY_SILVER_PATH}part-0.parquet", index=False)
+    storage.clear_path(paths["station_monthly"])
+    with fsspec.open(f"{paths['station_monthly'].rstrip('/')}/part-0.parquet", "wb", auto_mkdir=True) as f:
+        station_monthly.to_parquet(f, index=False)
     print("Estação × mês:", len(station_monthly))
 
     # Uma linha por estação, com os metadados do ano mais recente
@@ -214,13 +285,16 @@ def run_pipeline(root: str | None = None) -> None:
 
     station_map = station_mapping.map_stations(
         station_metadata,
-        pd.read_parquet(config.DIM_MUNICIPALITY_SILVER_PATH),
+        pd.read_parquet(paths["dim"]),
         _read_latest_mesh(root),
     )
     print_station_report(station_map)
 
-    storage.clear_path(config.INMET_STATIONS_SILVER_PATH)
-    station_map.to_parquet(f"{config.INMET_STATIONS_SILVER_PATH}part-0.parquet", index=False)
+    storage.clear_path(paths["stations"])
+    with fsspec.open(f"{paths['stations'].rstrip('/')}/part-0.parquet", "wb", auto_mkdir=True) as f:
+        station_map.to_parquet(f, index=False)
+
+    return processed
 
 
 if __name__ == "__main__":
