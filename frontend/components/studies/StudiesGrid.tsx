@@ -5,13 +5,7 @@ import type { StudySummary } from "@/types/study";
 import { StudyCard } from "@/components/studies/StudyCard";
 import { StudyDashboardModal } from "@/components/studies/StudyDashboardModal";
 
-export function StudiesGrid({
-  studies,
-  municipalities,
-}: {
-  studies: StudySummary[];
-  municipalities: string[];
-}) {
+export function StudiesGrid({ studies }: { studies: StudySummary[] }) {
   const [expanded, setExpanded] = useState<{ study: StudySummary; anchor: DOMRect } | null>(null);
 
   return (
@@ -30,7 +24,6 @@ export function StudiesGrid({
         <StudyDashboardModal
           study={expanded.study}
           anchorRect={expanded.anchor}
-          municipalities={municipalities}
           onClose={() => setExpanded(null)}
         />
       )}

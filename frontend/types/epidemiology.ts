@@ -1,6 +1,7 @@
 /**
- * Disease codes as stored in the Gold table and used by MODEL_CONFIG
- * (data_science/src/epidemiological_intelligence/modeling/configs.py).
+ * Disease codes as stored in the Gold table -- set by the DE pipeline
+ * in de/src/epidemiological_de/sih/transform.py (hospitalizations) and
+ * de/src/epidemiological_de/sinan/transform.py (notifications).
  */
 export type DiseaseCode =
   | "ASMA"
@@ -8,7 +9,14 @@ export type DiseaseCode =
   | "BRONQUITE CRÔNICA"
   | "INFARTO AGUDO DO MIOCÁRDIO"
   | "INSUFICIÊNCIA CARDÍACA"
-  | "LEPTOSPIROSE";
+  | "OROPOUCHE"
+  | "LEPTOSPIROSE"
+  | "ACIDENTE POR ESCORPIÃO"
+  | "ACIDENTE POR SERPENTE"
+  | "ACIDENTE POR ARANHA"
+  | "ACIDENTE POR ABELHA"
+  | "ACIDENTE POR LAGARTA"
+  | "ACIDENTE POR OUTRO ANIMAL PEÇONHENTO";
 
 export interface OverviewMetrics {
   totalCases: number;

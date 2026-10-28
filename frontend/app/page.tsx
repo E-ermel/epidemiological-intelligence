@@ -6,7 +6,8 @@ import { DiseaseDistributionChart } from "@/components/charts/DiseaseDistributio
 import { OverviewMap } from "@/components/map/OverviewMap";
 import { OverviewFilters } from "@/components/overview/OverviewFilters";
 import { getOverviewData } from "@/services/overviewService";
-import { getCountryAreas, getMunicipalityBubbles } from "@/services/geographyService";
+import { getCountryAreas } from "@/services/geographyService";
+import { DISEASE_COLORS } from "@/lib/constants";
 import { formatDate, formatNumber } from "@/lib/utils";
 
 // Data comes from a live backend now, not a build-time mock -- must
@@ -30,12 +31,8 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
 
   const mapFilters = { diseases, startDate, endDate };
 
-  const [{ metrics, caseCurve, diseaseDistribution: distribution }, countryAreas, rsBubbles] =
-    await Promise.all([
-      getOverviewData(mapFilters),
-      getCountryAreas(mapFilters),
-      getMunicipalityBubbles("RS", mapFilters),
-    ]);
+  const [{ metrics, caseCurve, diseaseDistribution: distribution }, countryAreas] =
+    await Promise.all([getOverviewData(mapFilters), getCountryAreas(mapFilters)]);
 
   const periodLabel = metrics.periodStart && metrics.periodEnd
     ? `${new Date(metrics.periodStart).getUTCFullYear()}–${new Date(metrics.periodEnd).getUTCFullYear()}`
@@ -80,9 +77,16 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
             <p className="mb-2 text-xs text-muted">Participação no total de casos do período.</p>
             <DiseaseDistributionChart data={distribution} />
             <ul className="mt-2 flex flex-col gap-1.5">
-              {distribution.map((slice) => (
+              {[...distribution].sort((a, b) => b.cases - a.cases).map((slice) => (
                 <li key={slice.disease} className="flex items-center justify-between text-xs">
-                  <span className="text-muted">{slice.label}</span>
+                  <span className="flex items-center gap-2 text-muted">
+                    <span
+                      aria-hidden
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: DISEASE_COLORS[slice.disease] }}
+                    />
+                    {slice.label}
+                  </span>
                   <span className="font-medium text-foreground">
                     {slice.shareOfTotalPct.toFixed(1)}%
                   </span>
@@ -97,7 +101,7 @@ export default async function OverviewPage({ searchParams }: OverviewPageProps) 
           <p className="mb-2 text-xs text-muted">
             Casos por região. Clique em um estado para explorar os municípios.
           </p>
-          <OverviewMap countryAreas={countryAreas} stateBubbles={{ RS: rsBubbles }} />
+          <OverviewMap key={JSON.stringify(mapFilters)} countryAreas={countryAreas} filters={mapFilters} />
         </Card>
       </div>
     </div>

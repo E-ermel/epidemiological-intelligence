@@ -3,7 +3,11 @@ import type {
   CaseCurvePoint,
   OverviewMetrics,
 } from "@/types/epidemiology";
-import type { EpidemiologicalDataFilters, EpidemiologicalRecord } from "@/types/data";
+import type {
+  EpidemiologicalDataFilters,
+  EpidemiologicalRecord,
+  MunicipalityOption,
+} from "@/types/data";
 import type { GeoArea, MapLevel } from "@/types/map";
 import type { ModelMetadata, ObservedVsPredictedPoint } from "@/types/model";
 
@@ -200,16 +204,18 @@ export function getRetrainExecutionStatus(executionName: string) {
   );
 }
 
-/** Maps 1:1 to GET /municipalities. */
-export function getMunicipalitiesData() {
-  return request<string[]>("/municipalities");
+/** Maps 1:1 to GET /municipalities?state=. */
+export function getMunicipalitiesData(state?: string) {
+  const query = state ? `?state=${encodeURIComponent(state)}` : "";
+  return request<MunicipalityOption[]>(`/municipalities${query}`);
 }
 
-/** Maps 1:1 to GET /data?disease=&municipality=&start_date=&end_date=. */
+/** Maps 1:1 to GET /data?disease=&state=&municipality_code=&start_date=&end_date=. */
 export function getEpidemiologicalData(filters: EpidemiologicalDataFilters) {
   const params = new URLSearchParams();
   if (filters.disease) params.set("disease", filters.disease);
-  if (filters.municipality) params.set("municipality", filters.municipality);
+  if (filters.state) params.set("state", filters.state);
+  if (filters.municipalityCode) params.set("municipality_code", filters.municipalityCode);
   if (filters.startDate) params.set("start_date", filters.startDate);
   if (filters.endDate) params.set("end_date", filters.endDate);
 

@@ -1,4 +1,5 @@
 import type { EpidemiologicalRecord } from "@/types/data";
+import type { GeoArea } from "@/types/map";
 
 export interface MonthlyAggregate {
   referenceDate: string;
@@ -83,26 +84,21 @@ export function aggregateSeasonality(records: EpidemiologicalRecord[]): Seasonal
 }
 
 export interface MunicipalityAggregate {
+  /** Bar label: a state name or a municipality name. */
   municipality: string;
   cases: number;
 }
 
-/** Total cases per municipality in the filtered set, highest first. */
-export function aggregateByMunicipality(
-  records: EpidemiologicalRecord[],
-  limit = 8
-): MunicipalityAggregate[] {
-  const byMunicipality = new Map<string, number>();
-
-  for (const record of records) {
-    byMunicipality.set(
-      record.municipality,
-      (byMunicipality.get(record.municipality) ?? 0) + (record.cases ?? 0)
-    );
-  }
-
-  return [...byMunicipality.entries()]
-    .map(([municipality, cases]) => ({ municipality, cases }))
+/**
+ * The `limit` areas with most cases, from GET /geo/{level} -- states
+ * for all of Brazil, municipalities within a state. GET /data comes
+ * aggregated per month when no municipality is chosen, so it no longer
+ * carries a per-municipality breakdown to rank.
+ */
+export function topAreas(areas: GeoArea[], limit = 8): MunicipalityAggregate[] {
+  return areas
+    .filter((area) => area.cases > 0)
+    .map((area) => ({ municipality: area.name, cases: area.cases }))
     .sort((a, b) => b.cases - a.cases)
     .slice(0, limit);
 }

@@ -1,5 +1,7 @@
+import type { MunicipalityOption } from "@/types/data";
 import { getMunicipalitiesData } from "@/services/api";
 
-export async function getMunicipalities(): Promise<string[]> {
-  return getMunicipalitiesData();
+/** Municipalities of one state (UF code), for the municipality picker. */
+export async function getMunicipalities(state: string): Promise<MunicipalityOption[]> {
+  return getMunicipalitiesData(state);
 }
