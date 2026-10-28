@@ -11,7 +11,9 @@ main:
     - ingest:
         parallel:
           branches:
-            - ibge:
+            # Nomes de ramo paralelo precisam ser únicos no workflow
+            # inteiro (o bronze_to_silver abaixo já tem um "inmet").
+            - ibge_ingest:
                 steps:
                   - run_ibge_ingest:
                       call: googleapis.run.v2.projects.locations.jobs.run
@@ -19,7 +21,7 @@ main:
                         name: ${ibge_ingest_job}
                         connector_params:
                           timeout: 7200
-            - inmet:
+            - inmet_ingest:
                 steps:
                   - run_inmet_ingest:
                       call: googleapis.run.v2.projects.locations.jobs.run
