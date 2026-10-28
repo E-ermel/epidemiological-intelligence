@@ -1,88 +1,103 @@
+"""
+Silver (SIH, SINAN, INMET, dim_municipality) -> gold nacional (+ BigQuery).
+
+São ~10 milhões de linhas (5.571 municípios × ~140 meses × 13
+doenças): o gold é montado e gravado uma doença por vez, em
+<GOLD_PATH>/part-NN.parquet, e o BigQuery carrega a pasta direto do
+GCS, sem juntar tudo num DataFrame.
+"""
+
+import fsspec
 import pandas as pd
 
 from epidemiological_de import config, storage, warehouse
-from epidemiological_de.gold.transform import (
-    aggregate_municipality_monthly,
-    attach_municipality,
-    join_gold,
-)
+from epidemiological_de.gold import transform
+
+# (fonte, silver, coluna de contagem)
+SOURCES = [
+    ("SIH", config.SIH_SILVER_PATH, "hospitalizations"),
+    ("SINAN", config.SINAN_SILVER_PATH, "cases"),
+]
 
 
-def run() -> pd.DataFrame:
+def report_unmatched(source: str, counts: pd.DataFrame, dim: pd.DataFrame) -> None:
+    """Casos de códigos fora da dim (ignorado, exterior...) não entram no gold."""
 
-    # Agregado estação × mês e mapa estação -> município, ambos gerados
-    # pelo pipeline do INMET -- o silver horário (Brasil todo) não é
-    # carregado aqui.
-    station_monthly = pd.read_parquet(config.INMET_STATION_MONTHLY_SILVER_PATH)
-    station_map = pd.read_parquet(config.INMET_STATIONS_SILVER_PATH)
-    sinan = pd.read_parquet(config.SINAN_SILVER_PATH)
+    known = set(dim["municipality_code_6"])
+    unmatched = counts.loc[~counts["municipality_code"].isin(known), "cases"].sum()
+    total = counts["cases"].sum()
+    print(f"{source}: {unmatched} de {total} casos ({unmatched / max(total, 1):.2%}) sem município válido de residência")
 
-    inmet_monthly = aggregate_municipality_monthly(
-        attach_municipality(station_monthly, station_map)
-    )
 
-    duplicates = (
-        inmet_monthly
-        .groupby(["municipality_code", "year", "month"])
-        .size()
-        .loc[lambda counts: counts > 1]
-    )
-    print("Duplicatas:", len(duplicates))
+def report_climate(climate: pd.DataFrame, dim: pd.DataFrame, months: int) -> None:
+    by_source = climate["climate_source"].value_counts().to_dict()
+    expected = len(dim) * months
+    print(f"Clima: {by_source} de {expected} município-meses ({len(climate) / expected:.1%} com clima)")
 
-    gold_df = join_gold(sinan, inmet_monthly)
 
-    print("SINAN:", len(sinan))
-    print("GOLD:", len(gold_df))
-    print("Sem clima:", gold_df["precipitation_sum_mm"].isna().sum())
+def run(
+    silver_paths: dict[str, str] | None = None,
+    gold_path: str | None = None,
+    table_id: str | None = None,
+) -> int:
+    """
+    `silver_paths` / `gold_path` / `table_id` sobrescrevem os caminhos
+    padrão (teste local). `table_id=""` pula a carga no BigQuery.
+    """
 
-    # O join é um LEFT JOIN do SINAN com uma linha climática única por
-    # município/ano/mês, então a contagem de linhas não pode mudar.
-    if len(gold_df) != len(sinan):
+    paths = {
+        "dim": config.DIM_MUNICIPALITY_SILVER_PATH,
+        "station_monthly": config.INMET_STATION_MONTHLY_SILVER_PATH,
+        "stations": config.INMET_STATIONS_SILVER_PATH,
+        **{source: path for source, path, _ in SOURCES},
+        **(silver_paths or {}),
+    }
+    gold_path = (gold_path or config.GOLD_PATH).rstrip("/")
+    table_id = config.GOLD_BIGQUERY_TABLE_ID if table_id is None else table_id
+
+    dim = pd.read_parquet(paths["dim"])
+    station_map = pd.read_parquet(paths["stations"])
+    station_monthly = pd.read_parquet(paths["station_monthly"])
+
+    duplicated = station_monthly.duplicated(["station_code", "year", "month"]).sum()
+    if duplicated:
         raise ValueError(
-            f"Gold join changed row count: "
-            f"SINAN={len(sinan)}, GOLD={len(gold_df)}"
+            f"{duplicated} linhas estação × mês duplicadas no silver do INMET "
+            "(zip com duas versões da mesma estação?)"
         )
 
-    duplicates_after_join = (
-        gold_df
-        .groupby(["disease", "municipality", "year", "month"])
-        .size()
-        .loc[lambda counts: counts > 1]
-    )
-    print("Duplicatas após join:", len(duplicates_after_join))
+    climate = transform.municipality_climate(station_monthly, station_map, dim, config.CLIMATE_MAX_DISTANCE_KM)
 
-    if len(duplicates_after_join) > 0:
-        raise ValueError(
-            f"Gold contains {len(duplicates_after_join)} duplicate keys after join."
-        )
+    storage.clear_path(gold_path)
+    total_rows, part = 0, 0
 
-    # Equivalente a .write.mode("overwrite") do Spark: limpa o prefixo
-    # de destino por completo antes de gravar o novo dataset.
-    storage.clear_path(config.GOLD_PATH)
+    for source, _, count_column in SOURCES:
+        silver = pd.read_parquet(paths[source])
+        counts = transform.case_counts(silver, count_column)
+        months = transform.month_range(silver, config.GOLD_FIRST_YEAR)
+        provisional = transform.provisional_months(silver)
 
-    # GOLD_PATH é um prefixo de diretório (como a escrita do Spark, que gera
-    # múltiplos arquivos part-*); to_parquet precisa de um nome de arquivo.
-    gold_df.to_parquet(f"{config.GOLD_PATH}part-0.parquet")
+        report_unmatched(source, counts, dim)
+        if part == 0:
+            report_climate(climate, dim, len(months))
 
-    gold_test = pd.read_parquet(config.GOLD_PATH)
-    print(gold_test.dtypes)
+        for disease in sorted(silver["disease"].unique()):
+            gold = transform.build_disease_gold(disease, source, counts, months, provisional, dim, climate)
 
-    original_count = len(gold_df)
-    stored_count = len(gold_test)
+            with fsspec.open(f"{gold_path}/part-{part:02d}.parquet", "wb", auto_mkdir=True) as f:
+                gold.to_parquet(f, index=False)
 
-    print("Original Gold:", original_count)
-    print("Stored Gold:", stored_count)
+            print(f"{disease} ({source}): {len(gold)} linhas, {gold['cases'].sum()} casos")
+            total_rows += len(gold)
+            part += 1
 
-    if original_count != stored_count:
-        raise ValueError(
-            f"Gold row count mismatch: "
-            f"original={original_count}, stored={stored_count}"
-        )
+    print("Gold:", total_rows, "linhas")
 
-    loaded_rows = warehouse.load_dataframe(gold_df, config.GOLD_BIGQUERY_TABLE_ID)
-    print("BigQuery:", loaded_rows, "linhas em", config.GOLD_BIGQUERY_TABLE_ID)
+    if table_id:
+        loaded = warehouse.load_parquet_uri(f"{gold_path}/*.parquet", table_id, total_rows)
+        print("BigQuery:", loaded, "linhas em", table_id)
 
-    return gold_df
+    return total_rows
 
 
 if __name__ == "__main__":

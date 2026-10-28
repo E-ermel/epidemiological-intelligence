@@ -1,111 +1,91 @@
+"""
+SINAN bronze (.dbc por agravo/ano) -> silver de casos.
+
+Grava <SINAN_SILVER_PATH>/part-0.parquet com todos os agravos: são
+poucos arquivos (um por agravo e ano), então cabe numa task só.
+"""
+
+import fsspec
 import pandas as pd
 
-from epidemiological_de import config, storage
-from epidemiological_de.sinan import extract, transform
+from epidemiological_de import config, dbc, ingestion, storage
+from epidemiological_de.sinan import transform
+from epidemiological_de.sinan.ingest import FILE_PATTERN
 
 
-def build_sinan_silver() -> pd.DataFrame:
-    disease_dfs = []
-    for file_path in extract.list_bronze_files():
-        disease_name = extract.match_disease(file_path)
-        if disease_name is None:
-            print("Arquivo ignorado:", file_path)
-            continue
+def list_dbc_files(agravo: str, root: str | None = None) -> list[str]:
+    root = (root or config.BRONZE_ROOT).rstrip("/")
+    fs, base = fsspec.core.url_to_fs(f"{root}/{config.SINAN_SOURCE}/agravo={agravo}")
+    protocol = fs.protocol[0] if isinstance(fs.protocol, (list, tuple)) else fs.protocol
+    prefix = "" if protocol == "file" else f"{protocol}://"
 
-        print("Processando:", disease_name)
-        df_raw = extract.read_raw_sinan_csv(file_path)
-        df_disease = transform.process_sinan_file(df_raw, disease_name, file_path)
-        disease_dfs.append(df_disease)
-
-    if not disease_dfs:
-        raise ValueError("Nenhum dataset epidemiológico foi processado.")
-
-    return pd.concat(disease_dfs, ignore_index=True, sort=False)
-
-
-def print_diagnostics(sinan_silver_df: pd.DataFrame) -> None:
-    by_disease = (
-        sinan_silver_df.groupby("disease")
-        .agg(
-            registros=("municipality_code", "size"),
-            municipios=("municipality_code", "nunique"),
-        )
-        .reset_index()
-        .sort_values("disease")
-    )
-    print(by_disease)
-
-    # dropna=False: o groupBy do Spark mantém grupos com year/month nulos.
-    duplicate_counts = sinan_silver_df.groupby(
-        ["disease", "municipality_code", "year", "month"], dropna=False
-    ).size()
-    duplicates = duplicate_counts[duplicate_counts > 1]
-    print("Duplicatas:", len(duplicates))
-
-    by_disease_year = (
-        sinan_silver_df.groupby(["disease", "year"], dropna=False)
-        .agg(
-            registros=("cases", "size"),
-            cases_null=("cases", lambda s: s.isna().sum()),
-        )
-        .reset_index()
-        .sort_values(["disease", "year"])
-    )
-    print(by_disease_year)
-
-
-def write_silver(sinan_silver_df: pd.DataFrame) -> None:
-    df_out = sinan_silver_df.copy()
-
-    # Coluna de partição não pode ser dtype nullable: o pyarrow grava o Int64 no
-    # metadata do pandas e a releitura quebra (dictionary não vira Int64).
-    df_out["year"] = df_out["year"].astype("int64")
-
-    # Equivalente a .write.mode("overwrite") do Spark: limpa o prefixo
-    # de destino por completo antes de gravar o novo dataset.
-    storage.clear_path(config.SINAN_SILVER_PATH)
-
-    df_out.to_parquet(
-        config.SINAN_SILVER_PATH,
-        engine="pyarrow",
-        partition_cols=["disease", "year"],
-        index=False,
+    return sorted(
+        f"{prefix}{path}"
+        for path in fs.glob(f"{base}/*")
+        if FILE_PATTERN.match(path.rstrip("/").split("/")[-1])
     )
 
 
-def verify_silver(sinan_silver_df: pd.DataFrame) -> None:
-    sinan_silver_test = pd.read_parquet(config.SINAN_SILVER_PATH, engine="pyarrow")
+def is_preliminary(path: str) -> bool:
+    """O manifesto guarda de que pasta do FTP (FINAIS ou PRELIM) o arquivo veio."""
 
-    original_count = len(sinan_silver_df)
-    silver_count = len(sinan_silver_test)
-
-    print("Original:", original_count)
-    print("Silver:", silver_count)
-
-    if original_count != silver_count:
-        raise ValueError(
-            f"SINAN Silver row count mismatch: "
-            f"original={original_count}, silver={silver_count}"
-        )
-
-    final_stats = (
-        sinan_silver_test.groupby("disease")
-        .agg(
-            records=("cases", "size"),
-            total_cases=("cases", "sum"),
-            null_cases=("cases", lambda s: s.isna().sum()),
-        )
-        .reset_index()
-        .sort_values("disease")
-    )
-    print(final_stats)
+    manifest = ingestion.read_manifest(path) or {}
+    return "/PRELIM/" in manifest.get("url", "")
 
 
-def run() -> None:
-    sinan_silver_df = build_sinan_silver()
-    print_diagnostics(sinan_silver_df)
-    write_silver(sinan_silver_df)
-    verify_silver(sinan_silver_df)
+def file_year(path: str) -> int:
+    return 2000 + int(FILE_PATTERN.match(path.rstrip("/").split("/")[-1]).group(2))
+
+
+def build_silver(root: str | None = None) -> pd.DataFrame:
+    per_agravo = []
+
+    for agravo in config.SINAN_AGRAVOS:
+        files = list_dbc_files(agravo, root)
+        if not files:
+            raise FileNotFoundError(
+                f"Nenhum .dbc de {agravo} no bronze do SINAN -- rode antes "
+                "`python -m epidemiological_de.sinan.ingest`."
+            )
+
+        aggregates, preliminary_years = [], set()
+        for path in files:
+            records = dbc.read_dbc(path, transform.RAW_COLUMNS[agravo])
+            events = transform.EVENT_BUILDERS[agravo](records)
+            aggregates.append(transform.aggregate_cases(events, config.SINAN_FIRST_YEAR))
+            if is_preliminary(path):
+                preliminary_years.add(file_year(path))
+            print(f"{path.split('/')[-1]}: {len(records)} fichas, {len(events)} casos")
+
+        print(f"{agravo}: anos preliminares {sorted(preliminary_years)}")
+        per_agravo.append(transform.mark_provisional(transform.combine(aggregates), preliminary_years))
+
+    return pd.concat(per_agravo, ignore_index=True)
+
+
+def print_report(silver: pd.DataFrame) -> None:
+    summary = silver.groupby(["disease", "year"])["cases"].sum().unstack("year", fill_value=0)
+    print(summary.to_string())
+
+    without_occurrence = silver.loc[silver["occurrence_municipality_code"].isna(), "cases"].sum()
+    print(f"Casos sem município do evento: {without_occurrence} de {silver['cases'].sum()}")
+
+
+def run(root: str | None = None, silver_root: str | None = None) -> pd.DataFrame:
+    silver = build_silver(root)
+    print_report(silver)
+
+    dest_dir = (silver_root or config.SINAN_SILVER_PATH).rstrip("/")
+    dest = f"{dest_dir}/part-0.parquet"
+    storage.clear_path(dest_dir)
+    with fsspec.open(dest, "wb", auto_mkdir=True) as f:
+        silver.to_parquet(f, index=False)
+
+    stored = pd.read_parquet(dest)
+    if stored["cases"].sum() != silver["cases"].sum():
+        raise ValueError("SINAN: total gravado diverge do calculado")
+
+    return silver
 
 
 if __name__ == "__main__":

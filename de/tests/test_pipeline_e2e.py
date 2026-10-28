@@ -1,9 +1,15 @@
+"""
+Ponta a ponta local: CSVs do INMET (bronze) -> agregado estação × mês
+-> gold.pipeline.run com silvers de SIH e SINAN em parquet, sem GCS
+nem BigQuery.
+"""
+
 import pandas as pd
 
-from epidemiological_de.gold.transform import build_gold
+from epidemiological_de import config
+from epidemiological_de.gold import pipeline as gold_pipeline
 from epidemiological_de.inmet import pipeline as inmet_pipeline
 from epidemiological_de.inmet.transform import aggregate_station_monthly
-from epidemiological_de.sinan import transform as sinan_transform
 
 
 INMET_HEADER_PORTO_ALEGRE = (
@@ -17,107 +23,104 @@ INMET_HEADER_PORTO_ALEGRE = (
     "DATA DE FUNDACAO:;01/01/2000\n"
 )
 
-INMET_HEADER_CANOAS = (
-    "REGIAO:;S\n"
-    "UF:;RS\n"
-    "ESTACAO:;CANOAS\n"
-    "CODIGO (WMO):;A802\n"
-    "LATITUDE:;-29,92\n"
-    "LONGITUDE:;-51,18\n"
-    "ALTITUDE:;5,0\n"
-    "DATA DE FUNDACAO:;01/01/2000\n"
-)
-
 
 def _inmet_rows(*, date, temperature, precipitation="0,0"):
     return f"{date};1200;{precipitation};1013,2;X;X;X;{temperature};18,2;X;X;X;X;X;X;80;120;5,2;3,1;\n"
 
 
-def _write_bronze_file(path, header, rows):
-    path.write_bytes((header + "".join(rows)).encode("ISO-8859-1"))
-
-
-def _build_inmet_silver(tmp_path):
-    porto_alegre_file = tmp_path / "porto_alegre.csv"
-    canoas_file = tmp_path / "canoas.csv"
-
-    _write_bronze_file(
-        porto_alegre_file,
-        INMET_HEADER_PORTO_ALEGRE,
-        [_inmet_rows(date="2023-01-10", temperature="20,0")],
+def _station_monthly(tmp_path):
+    bronze_file = tmp_path / "porto_alegre.csv"
+    bronze_file.write_bytes(
+        (INMET_HEADER_PORTO_ALEGRE + _inmet_rows(date="2015-01-10", temperature="20,0")).encode("ISO-8859-1")
     )
-    _write_bronze_file(
-        canoas_file,
-        INMET_HEADER_CANOAS,
-        [_inmet_rows(date="2023-01-15", temperature="24,0")],
-    )
-
-    silver = inmet_pipeline.build_inmet_silver(
-        [str(porto_alegre_file), str(canoas_file)]
-    )
-    return aggregate_station_monthly(silver)
+    return aggregate_station_monthly(inmet_pipeline.build_inmet_silver([str(bronze_file)]))
 
 
-# Saída de inmet/stations.py: A801 em Porto Alegre, A802 em Canoas.
-STATION_MAP = pd.DataFrame(
+DIM = pd.DataFrame(
     {
-        "station_code": ["A801", "A802"],
-        "municipality_code_6": ["431490", "430460"],
+        "municipality_code": ["4314902", "4309209"],
+        "municipality_code_6": ["431490", "430920"],
+        "municipality_name": ["Porto Alegre", "Gravataí"],
+        "municipality_name_normalized": ["PORTO ALEGRE", "GRAVATAI"],
+        "state": ["RS", "RS"],
+        "region": ["S", "S"],
+        "latitude": [-30.03, -29.94],
+        "longitude": [-51.23, -50.99],
+    }
+)
+
+STATIONS = pd.DataFrame(
+    {"station_code": ["A801"], "municipality_code_6": ["431490"], "latitude": [-30.05], "longitude": [-51.17]}
+)
+
+SIH = pd.DataFrame(
+    {
+        "disease": ["ASMA", "OROPOUCHE"],
+        "residence_municipality_code": ["430920", "431490"],
+        "occurrence_municipality_code": ["431490", "431490"],
+        "year": [2015, 2015],
+        "month": [2, 1],
+        "hospitalizations": [4, 1],
+        "is_provisional": [True, False],
+    }
+)
+
+SINAN = pd.DataFrame(
+    {
+        "disease": ["LEPTOSPIROSE"],
+        "residence_municipality_code": ["431490"],
+        "occurrence_municipality_code": [None],
+        "year": [2015],
+        "month": [1],
+        "cases": [2],
+        "is_provisional": [False],
     }
 )
 
 
-def _build_sinan_silver():
-    raw = pd.DataFrame(
-        {
-            "municipio": ["431490 PORTO ALEGRE", "999999 SEM ESTACAO"],
-            "2023/Jan": ["10", "3"],
-        }
-    )
-    return sinan_transform.process_sinan_file(raw, "ASMA", "asma.csv")
+def _run(tmp_path):
+    paths = {}
+    for name, df in {"dim": DIM, "stations": STATIONS, "station_monthly": _station_monthly(tmp_path),
+                     "SIH": SIH, "SINAN": SINAN}.items():
+        path = tmp_path / "silver" / f"{name}.parquet"
+        path.parent.mkdir(exist_ok=True)
+        df.to_parquet(path, index=False)
+        paths[name] = str(path)
+
+    gold_path = tmp_path / "gold"
+    rows = gold_pipeline.run(silver_paths=paths, gold_path=str(gold_path), table_id="")
+    return rows, pd.read_parquet(gold_path)
 
 
-def test_bronze_to_gold_preserves_sinan_cardinality_with_small_fixtures(tmp_path):
-    inmet_silver = _build_inmet_silver(tmp_path)
-    sinan_silver = _build_sinan_silver()
+def test_gold_pipeline_builds_full_grid_for_every_disease(tmp_path):
+    rows, gold = _run(tmp_path)
 
-    gold_df = build_gold(inmet_silver, STATION_MAP, sinan_silver)
-
-    assert len(gold_df) == len(sinan_silver)
-
-
-def test_bronze_to_gold_attaches_climate_only_where_a_station_exists(tmp_path):
-    inmet_silver = _build_inmet_silver(tmp_path)
-    sinan_silver = _build_sinan_silver()
-
-    gold_df = build_gold(inmet_silver, STATION_MAP, sinan_silver)
-
-    porto_alegre_row = gold_df[gold_df["municipality"] == "PORTO ALEGRE"].iloc[0]
-    assert porto_alegre_row["temperature_avg_c"] == 20.0
-    assert porto_alegre_row["cases"] == 10
-
-    no_station_row = gold_df[gold_df["municipality"] == "SEM ESTACAO"].iloc[0]
-    assert pd.isna(no_station_row["temperature_avg_c"])
-    assert no_station_row["cases"] == 3
+    # SIH: 2 municípios × 2 meses (jan-fev/2015) × 2 doenças; SINAN: 2 × 1 mês × 1.
+    assert rows == len(gold) == 2 * 2 * 2 + 2 * 1 * 1
+    assert set(gold["source"]) == {"SIH", "SINAN"}
+    assert not gold.duplicated(["disease", "municipality_code", "year", "month"]).any()
 
 
-def test_bronze_to_gold_has_no_duplicate_keys(tmp_path):
-    inmet_silver = _build_inmet_silver(tmp_path)
-    sinan_silver = _build_sinan_silver()
+def test_gold_pipeline_keeps_counts_and_climate(tmp_path):
+    _, gold = _run(tmp_path)
+    gold = gold.set_index(["disease", "municipality_code", "month"])
 
-    gold_df = build_gold(inmet_silver, STATION_MAP, sinan_silver)
+    assert gold.loc[("ASMA", "430920", 2), "cases"] == 4
+    assert gold.loc[("ASMA", "431490", 2), "cases_by_occurrence"] == 4
+    assert gold.loc[("LEPTOSPIROSE", "431490", 1), "cases"] == 2
 
-    duplicate_counts = gold_df.groupby(
-        ["disease", "municipality", "year", "month"]
-    ).size()
-    assert (duplicate_counts <= 1).all()
+    # Janeiro tem dado da A801: Porto Alegre usa a própria, Gravataí a mais próxima.
+    assert gold.loc[("ASMA", "431490", 1), "temperature_avg_c"] == 20.0
+    assert gold.loc[("ASMA", "430920", 1), "climate_source"] == "nearest_station"
+    assert pd.isna(gold.loc[("ASMA", "431490", 2), "temperature_avg_c"])
 
 
-def test_bronze_to_gold_is_idempotent_when_run_twice(tmp_path):
-    inmet_silver = _build_inmet_silver(tmp_path)
-    sinan_silver = _build_sinan_silver()
+def test_gold_pipeline_is_idempotent(tmp_path):
+    _, first = _run(tmp_path)
+    _, second = _run(tmp_path)
 
-    first_run = build_gold(inmet_silver, STATION_MAP, sinan_silver)
-    second_run = build_gold(inmet_silver, STATION_MAP, sinan_silver)
+    pd.testing.assert_frame_equal(first, second)
 
-    pd.testing.assert_frame_equal(first_run, second_run)
+
+def test_gold_table_default_is_the_national_one():
+    assert config.BIGQUERY_GOLD_TABLE == "epidemiology_climate_monthly_br"

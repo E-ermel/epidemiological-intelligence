@@ -1,5 +1,5 @@
 """
-Leitura dos .dbc do DATASUS.
+Leitura dos .dbc do DATASUS (SIH, SINAN...).
 
 O .dbc é um .dbf comprimido (formato próprio do DATASUS). O pyreaddbc
 descomprime para .dbf, e o .dbf é lido aqui direto com numpy: são

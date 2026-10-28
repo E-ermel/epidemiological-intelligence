@@ -2,7 +2,10 @@ import os
 
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "affable-alpha-506516-r7")
 BIGQUERY_DATASET = os.getenv("BIGQUERY_DATASET", "epidemiological_intelligence")
-BIGQUERY_GOLD_TABLE = os.getenv("BIGQUERY_GOLD_TABLE", "epidemiology_climate_monthly")
+
+# Gold nacional. A tabela anterior (epidemiology_climate_monthly, 27
+# municípios do RS) não é mais escrita e fica no dataset para rollback.
+BIGQUERY_GOLD_TABLE = os.getenv("BIGQUERY_GOLD_TABLE", "epidemiology_climate_monthly_br")
 
 GOLD_BIGQUERY_TABLE_ID = f"{GCP_PROJECT_ID}.{BIGQUERY_DATASET}.{BIGQUERY_GOLD_TABLE}"
 
@@ -83,19 +86,42 @@ SIH_FTP_DIR = "/dissemin/publicos/SIHSUS/200801_/Dados"
 # ano da série de casos não perde nada.
 SIH_FIRST_YEAR = int(os.getenv("SIH_FIRST_YEAR", "2015"))
 
+# AIHs atrasadas: em internações do RS em 2023, só 0,13% chegaram mais
+# de 4 meses depois do mês da internação. Os meses mais recentes que
+# isso (em relação à última competência da UF) saem marcados como
+# provisórios.
+SIH_PROVISIONAL_MONTHS = 4
+
 # Internações por doença × residência × internação × mês, partição por UF.
 SIH_SILVER_PATH = f"gs://{BUCKET}/silver/sih_hospitalizations/"
 
-SINAN_BRONZE_PATH = f"gs://{BUCKET}/bronze/sinan/"
-SINAN_SILVER_PATH = f"gs://{BUCKET}/silver/sinan/"
+# --- SINAN (notificações) ------------------------------------------
 
-GOLD_PATH = f"gs://{BUCKET}/gold/epidemiology_climate/"
+SINAN_SOURCE = "sinan"
 
-SINAN_DISEASE_MAP = {
-    "asma.csv": "ASMA",
-    "bronquite_aguda.csv": "BRONQUITE AGUDA",
-    "bronquite_cronica.csv": "BRONQUITE CRÔNICA",
-    "infarto.csv": "INFARTO AGUDO DO MIOCÁRDIO",
-    "insuficiencia_cardiaca.csv": "INSUFICIÊNCIA CARDÍACA",
-    "lesptospirose.csv": "LEPTOSPIROSE",
+# Um arquivo nacional por agravo e ano ({AGRAVO}BR{AA}.dbc). Anos com
+# base fechada ficam em FINAIS; os recentes em PRELIM, até fecharem.
+SINAN_FTP_DIRS = {
+    "FINAIS": "/dissemin/publicos/SINAN/DADOS/FINAIS",
+    "PRELIM": "/dissemin/publicos/SINAN/DADOS/PRELIM",
 }
+
+# LEPT: leptospirose; ANIM: acidentes por animais peçonhentos.
+SINAN_AGRAVOS = ["LEPT", "ANIM"]
+
+SINAN_FIRST_YEAR = int(os.getenv("SINAN_FIRST_YEAR", "2015"))
+
+# Casos por doença × residência × local do evento × mês.
+SINAN_SILVER_PATH = f"gs://{BUCKET}/silver/sinan_cases/"
+
+# --- Gold ----------------------------------------------------------
+
+# Um parquet por doença (part-NN.parquet); o BigQuery carrega a pasta.
+GOLD_PATH = f"gs://{BUCKET}/gold/epidemiology_climate_br/"
+
+# Município sem estação do INMET (ou sem dado dela no mês) usa a
+# estação mais próxima com dado, até esta distância do centróide.
+CLIMATE_MAX_DISTANCE_KM = float(os.getenv("CLIMATE_MAX_DISTANCE_KM", "100"))
+
+# Primeiro mês do gold: o mesmo das séries de casos.
+GOLD_FIRST_YEAR = 2015
