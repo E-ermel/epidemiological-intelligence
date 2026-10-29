@@ -84,6 +84,23 @@ def aggregate_hospitalizations(records: pd.DataFrame, first_year: int) -> pd.Dat
     )[SILVER_COLUMNS]
 
 
+def mark_provisional(
+    silver: pd.DataFrame,
+    latest_competencia: tuple[int, int],
+    provisional_months: int,
+) -> pd.DataFrame:
+    """
+    is_provisional = mês de internação a menos de `provisional_months`
+    da última competência publicada: AIHs desses meses ainda chegam.
+    """
+
+    latest_year, latest_month = latest_competencia
+    latest_index = latest_year * 12 + latest_month
+    month_index = silver["year"] * 12 + silver["month"]
+
+    return silver.assign(is_provisional=month_index > latest_index - provisional_months)
+
+
 def combine(aggregates: list[pd.DataFrame]) -> pd.DataFrame:
     """Soma agregados de vários arquivos: a mesma internação-mês chega em várias competências."""
 

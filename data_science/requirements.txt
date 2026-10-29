@@ -6,5 +6,6 @@ statsmodels
 pyarrow
 db-dtypes
 google-cloud-bigquery
+google-cloud-bigquery-storage
 google-cloud-storage
 patsy

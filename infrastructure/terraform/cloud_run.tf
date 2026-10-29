@@ -6,11 +6,16 @@ resource "google_project_service" "cloud_run_api" {
 }
 
 # ============================================================
-# Cloud Run Job - Data Science
+# Cloud Run Job - Data Science: alerta de surtos
+#
+# Chronos-2 em CPU (data_science/src/epidemiological_intelligence/alert):
+# lê o gold no BigQuery, grava outbreak_alerts e alert/latest.json.
+# ~25 min por rodada (o município é quase tudo); 32 GiB porque o gold
+# nacional (~10 milhões de linhas de casos) é lido inteiro na memória.
 # ============================================================
 resource "google_cloud_run_v2_job" "data_science" {
   project  = var.project_id
-  name     = "epidemiological-ds-modeling"
+  name     = "epidemiological-ds-alert"
   location = var.region
 
   deletion_protection = false
@@ -19,7 +24,7 @@ resource "google_cloud_run_v2_job" "data_science" {
     template {
       service_account = google_service_account.data_science_job.email
 
-      timeout     = "3600s"
+      timeout     = "7200s"
       max_retries = 1
 
       containers {
@@ -27,8 +32,8 @@ resource "google_cloud_run_v2_job" "data_science" {
 
         resources {
           limits = {
-            cpu    = "2"
-            memory = "4Gi"
+            cpu    = "8"
+            memory = "32Gi"
           }
         }
 
@@ -53,8 +58,13 @@ resource "google_cloud_run_v2_job" "data_science" {
         }
 
         env {
-          name  = "MODEL_ARTIFACT_PREFIX"
-          value = "modeling"
+          name  = "BIGQUERY_ALERT_TABLE"
+          value = var.bigquery_alert_table
+        }
+
+        env {
+          name  = "ALERT_ARTIFACT_PREFIX"
+          value = var.alert_artifact_prefix
         }
       }
     }
@@ -73,7 +83,7 @@ resource "google_cloud_run_v2_job" "data_science" {
     google_project_service.cloud_run_api,
     google_artifact_registry_repository.data_science,
     google_project_iam_member.ds_bigquery_job_user,
-    google_bigquery_dataset_iam_member.ds_bigquery_data_viewer,
+    google_bigquery_dataset_iam_member.ds_bigquery_data_editor,
     google_storage_bucket_iam_member.ds_artifact_writer
   ]
 }
@@ -136,6 +146,68 @@ locals {
       region      = var.ingest_region
       task_count  = 27
       parallelism = 9
+    }
+
+    # Um arquivo nacional por agravo/ano, ~200 MB no total: uma task.
+    sinan-ingest = {
+      module = "epidemiological_de.sinan.ingest"
+      region = var.ingest_region
+    }
+
+    sidra-ingest = {
+      module = "epidemiological_de.sidra.ingest"
+      region = var.ingest_region
+    }
+
+    sidra = {
+      module = "epidemiological_de.sidra.pipeline"
+      region = var.region
+    }
+
+    # Consulta a cópia do Atlas na Base dos Dados (BigQuery): sem
+    # bloqueio geográfico, roda junto do resto.
+    atlas-ingest = {
+      module = "epidemiological_de.atlas.ingest"
+      region = var.region
+    }
+
+    atlas = {
+      module = "epidemiological_de.atlas.pipeline"
+      region = var.region
+    }
+
+    # Cópia do MapBiomas na Base dos Dados (BigQuery), como o Atlas.
+    mapbiomas-ingest = {
+      module = "epidemiological_de.mapbiomas.ingest"
+      region = var.region
+    }
+
+    mapbiomas = {
+      module = "epidemiological_de.mapbiomas.pipeline"
+      region = var.region
+    }
+
+    # Arquivos do dashboard PRODES (TerraBrasilis/INPE), servidor do
+    # governo: ingestão no Brasil, como as demais.
+    prodes-ingest = {
+      module = "epidemiological_de.prodes.ingest"
+      region = var.ingest_region
+    }
+
+    prodes = {
+      module = "epidemiological_de.prodes.pipeline"
+      region = var.region
+    }
+
+    # Cópia do SNIS na Base dos Dados (BigQuery), como o Atlas.
+    snis-ingest = {
+      module = "epidemiological_de.snis.ingest"
+      region = var.region
+    }
+
+    snis = {
+      module = "epidemiological_de.snis.pipeline"
+      region = var.region
     }
 
     # Silver do SIH: uma task por UF, lendo o bronze no GCS.
@@ -226,16 +298,6 @@ resource "google_cloud_run_v2_service" "ai" {
       }
 
       env {
-        name  = "GCP_REGION"
-        value = var.region
-      }
-
-      env {
-        name  = "DS_JOB_NAME"
-        value = google_cloud_run_v2_job.data_science.name
-      }
-
-      env {
         name  = "BIGQUERY_DATASET"
         value = var.bigquery_dataset_id
       }
@@ -251,11 +313,16 @@ resource "google_cloud_run_v2_service" "ai" {
       }
 
       env {
-        name  = "MODEL_ARTIFACT_PREFIX"
-        value = "modeling"
+        name  = "BIGQUERY_ALERT_TABLE"
+        value = var.bigquery_alert_table
       }
 
-      # O chat, os filtros e o retrain chamam a API direto do navegador;
+      env {
+        name  = "ALERT_ARTIFACT_PREFIX"
+        value = var.alert_artifact_prefix
+      }
+
+      # O chat, os filtros e os alertas chamam a API direto do navegador;
       # sem isso o CORS do app.py só libera http://localhost:3000.
       env {
         name  = "ALLOWED_ORIGINS"

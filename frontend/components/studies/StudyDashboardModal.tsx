@@ -10,37 +10,43 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { ClimateTrendChart } from "@/components/charts/ClimateTrendChart";
 import { SeasonalityChart } from "@/components/charts/SeasonalityChart";
 import { MunicipalityCasesChart } from "@/components/charts/MunicipalityCasesChart";
+import { LocationSelect, type LocationValue } from "@/components/filters/LocationSelect";
 import { queryEpidemiologicalData } from "@/services/dataService";
-import { ApiError } from "@/services/api";
+import { ApiError, getGeo } from "@/services/api";
+import type { GeoArea } from "@/types/map";
 import {
   aggregateByMonth,
-  aggregateByMunicipality,
   aggregateSeasonality,
+  topAreas,
 } from "@/lib/aggregateEpidemiologicalRecords";
 import { CLIMATE_VARIABLES } from "@/lib/constants";
 import { cn, formatNumber } from "@/lib/utils";
 
 const TRANSITION_MS = 200;
 
+const SELECT_CLASS =
+  "rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-foreground focus:border-primary-500 focus:outline-none disabled:opacity-60";
+const LABEL_CLASS = "flex flex-col gap-1 text-xs font-medium text-muted";
+
 export function StudyDashboardModal({
   study,
   anchorRect,
-  municipalities,
   onClose,
 }: {
   study: StudySummary;
   anchorRect: DOMRect;
-  municipalities: string[];
   onClose: () => void;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const [municipality, setMunicipality] = useState("");
+  const [location, setLocation] = useState<LocationValue>({ state: "", municipalityCode: "" });
   const [climateKey, setClimateKey] = useState(CLIMATE_VARIABLES[0].key);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
   const [records, setRecords] = useState<EpidemiologicalRecord[] | null>(null);
+  // UFs (Brasil) ou municípios (uma UF), para o ranking e a contagem.
+  const [areas, setAreas] = useState<GeoArea[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,14 +77,24 @@ export function StudyDashboardModal({
     setIsLoading(true);
     setError(null);
 
+    const period = { startDate: startDate || undefined, endDate: endDate || undefined };
+
     try {
-      const data = await queryEpidemiologicalData({
-        disease: study.disease,
-        municipality: municipality || undefined,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-      });
+      const [data, geo] = await Promise.all([
+        queryEpidemiologicalData({
+          disease: study.disease,
+          state: location.state || undefined,
+          municipalityCode: location.municipalityCode || undefined,
+          ...period,
+        }),
+        location.municipalityCode
+          ? Promise.resolve([])
+          : location.state
+            ? getGeo("state", location.state, { diseases: [study.disease], ...period })
+            : getGeo("country", undefined, { diseases: [study.disease], ...period }),
+      ]);
       setRecords(data);
+      setAreas(geo);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Erro inesperado ao consultar os dados.");
       setRecords(null);
@@ -95,9 +111,12 @@ export function StudyDashboardModal({
   const climateLabel = CLIMATE_VARIABLES.find((v) => v.key === climateKey)?.label ?? "";
   const trendData = records ? aggregateByMonth(records, climateKey) : [];
   const seasonalityData = records ? aggregateSeasonality(records) : [];
-  const municipalityData = records ? aggregateByMunicipality(records) : [];
+  const rankingData = topAreas(areas);
   const totalCases = records?.reduce((sum, r) => sum + (r.cases ?? 0), 0) ?? 0;
-  const municipalityCount = records ? new Set(records.map((r) => r.municipality)).size : 0;
+  // Áreas com caso no filtro: municípios dentro de uma UF; no Brasil, UFs.
+  const areaCount = location.municipalityCode ? 1 : areas.filter((a) => a.cases > 0).length;
+  const areaCountLabel = location.state ? "Municípios com casos" : "Estados com casos";
+  const rankingTitle = location.state ? "Municípios com mais casos" : "Estados com mais casos";
 
   const collapsedStyle: React.CSSProperties = {
     top: anchorRect.top,
@@ -160,23 +179,14 @@ export function StudyDashboardModal({
                 event.preventDefault();
                 fetchData();
               }}
-              className="mb-4 grid grid-cols-1 items-end gap-3 rounded-xl border border-border bg-surface-muted p-3 sm:grid-cols-2 lg:grid-cols-5"
+              className="mb-4 grid grid-cols-1 items-end gap-3 rounded-xl border border-border bg-surface-muted p-3 sm:grid-cols-2 lg:grid-cols-6"
             >
-              <label className="flex flex-col gap-1 text-xs font-medium text-muted">
-                Município
-                <select
-                  value={municipality}
-                  onChange={(e) => setMunicipality(e.target.value)}
-                  className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-sm text-foreground focus:border-primary-500 focus:outline-none"
-                >
-                  <option value="">Todos</option>
-                  {municipalities.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <LocationSelect
+                value={location}
+                onChange={setLocation}
+                selectClassName={SELECT_CLASS}
+                labelClassName={LABEL_CLASS}
+              />
 
               <label className="flex flex-col gap-1 text-xs font-medium text-muted">
                 Variável climática
@@ -236,9 +246,11 @@ export function StudyDashboardModal({
                     </p>
                   </div>
                   <div className="rounded-xl border border-border p-3">
-                    <p className="text-xs text-muted-light">Municípios</p>
+                    <p className="text-xs text-muted-light">
+                      {location.municipalityCode ? "Município" : areaCountLabel}
+                    </p>
                     <p className="text-lg font-semibold text-foreground">
-                      {formatNumber(municipalityCount)}
+                      {formatNumber(areaCount)}
                     </p>
                   </div>
                   <div className="rounded-xl border border-border p-3">
@@ -268,15 +280,13 @@ export function StudyDashboardModal({
                     <SeasonalityChart data={seasonalityData} />
                   </div>
 
-                  {!municipality && municipalityData.length > 0 && (
+                  {!location.municipalityCode && rankingData.length > 0 && (
                     <div className="rounded-xl border border-border p-4">
-                      <h3 className="mb-1 text-sm font-semibold text-foreground">
-                        Municípios com mais casos
-                      </h3>
+                      <h3 className="mb-1 text-sm font-semibold text-foreground">{rankingTitle}</h3>
                       <p className="mb-2 text-xs text-muted">
-                        Top {municipalityData.length} no período filtrado.
+                        Top {rankingData.length} no período filtrado.
                       </p>
-                      <MunicipalityCasesChart data={municipalityData} />
+                      <MunicipalityCasesChart data={rankingData} />
                     </div>
                   )}
                 </div>

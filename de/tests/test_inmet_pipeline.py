@@ -104,6 +104,39 @@ def test_process_year_writes_silver_and_returns_station_monthly(tmp_path):
     assert set(stations["state"]) == {"RS", "SC"}
 
 
+def test_latest_station_members_keeps_newest_version_of_each_station():
+    names = [
+        "2026/INMET_CO_DF_A001_BRASILIA_01-01-2026_A_31-08-2026.CSV",
+        "2026/INMET_CO_DF_A001_BRASILIA_01-01-2026_A_30-09-2026.CSV",
+        "2026/INMET_S_RS_A801_PORTO ALEGRE - JARDIM BOTANICO_01-01-2026_A_31-08-2026.CSV",
+        "fora_do_padrao.CSV",
+    ]
+
+    assert pipeline.latest_station_members(names) == [
+        "2026/INMET_CO_DF_A001_BRASILIA_01-01-2026_A_30-09-2026.CSV",
+        "2026/INMET_S_RS_A801_PORTO ALEGRE - JARDIM BOTANICO_01-01-2026_A_31-08-2026.CSV",
+        "fora_do_padrao.CSV",
+    ]
+
+
+def test_process_year_reads_only_newest_file_of_duplicated_station(tmp_path):
+    import pandas as pd
+
+    zip_path = tmp_path / "2026.zip"
+    _write_year_zip(
+        zip_path,
+        {
+            "INMET_S_RS_A801_PORTO ALEGRE_01-01-2026_A_31-08-2026.CSV": (HEADER, (DATA_ROW,)),
+            "INMET_S_RS_A801_PORTO ALEGRE_01-01-2026_A_30-09-2026.CSV": (HEADER, (DATA_ROW, DATA_ROW.replace("0000 UTC", "0100 UTC"))),
+        },
+    )
+    silver_root = str(tmp_path / "silver")
+
+    pipeline.process_year(str(zip_path), 2026, silver_root)
+
+    assert len(pd.read_parquet(silver_root)) == 2
+
+
 def test_process_year_replaces_previous_partition(tmp_path):
     import pandas as pd
 
@@ -115,3 +148,75 @@ def test_process_year_replaces_previous_partition(tmp_path):
     pipeline.process_year(str(zip_path), 2023, silver_root)
 
     assert len(pd.read_parquet(silver_root)) == 1
+
+
+# ---------------------------------------------------------------------
+# run_pipeline: só reprocessa o ano cujo zip mudou
+# ---------------------------------------------------------------------
+
+
+def _pipeline_fixture(tmp_path):
+    import json
+    from datetime import date
+
+    import pandas as pd
+
+    from epidemiological_de import ingestion
+    from epidemiological_de.ibge.ingest import MALHA_FILE
+
+    bronze = tmp_path / "bronze"
+    for year in (2023, 2024):
+        zip_path = bronze / "inmet" / f"year={year}" / f"{year}.zip"
+        rows = (DATA_ROW.replace("2023-", f"{year}-"),)
+        _write_year_zip(zip_path, {f"INMET_S_RS_A801_PORTO ALEGRE_01-01-{year}_A_31-12-{year}.CSV": (HEADER, rows)})
+        (bronze / "inmet" / f"year={year}" / f"{year}.zip.manifest.json").write_text(json.dumps({"sha256": f"v1-{year}"}))
+
+    ingestion.save_snapshot(
+        json.dumps({"features": []}).encode(),
+        source="ibge", filename=MALHA_FILE, url="x", source_type="oficial",
+        ingestion_date=date(2026, 10, 1), root=str(bronze),
+    )
+
+    dim_path = tmp_path / "dim.parquet"
+    pd.DataFrame(
+        {
+            "municipality_code": ["4314902"],
+            "municipality_name": ["Porto Alegre"],
+            "municipality_name_normalized": ["PORTO ALEGRE"],
+            "state": ["RS"],
+            "latitude": [-30.03],
+            "longitude": [-51.23],
+        }
+    ).to_parquet(dim_path, index=False)
+
+    silver = tmp_path / "silver"
+    paths = {
+        "hourly": str(silver / "inmet"),
+        "years": str(silver / "inmet_years"),
+        "station_monthly": str(silver / "inmet_station_monthly"),
+        "stations": str(silver / "inmet_stations"),
+        "dim": str(dim_path),
+    }
+    return bronze, paths
+
+
+def test_run_pipeline_reprocesses_only_years_whose_zip_changed(tmp_path):
+    import json
+
+    import pandas as pd
+
+    bronze, paths = _pipeline_fixture(tmp_path)
+
+    assert pipeline.run_pipeline(root=str(bronze), paths=paths) == [2023, 2024]
+    assert pipeline.run_pipeline(root=str(bronze), paths=paths) == []
+
+    # O INMET revisou 2023: só ele volta a ser processado.
+    (bronze / "inmet" / "year=2023" / "2023.zip.manifest.json").write_text(json.dumps({"sha256": "v2-2023"}))
+    assert pipeline.run_pipeline(root=str(bronze), paths=paths) == [2023]
+
+    # A saída final continua com os dois anos, vindos do processamento
+    # ou do resultado guardado.
+    monthly = pd.read_parquet(paths["station_monthly"])
+    assert sorted(monthly["year"].unique()) == [2023, 2024]
+    stations = pd.read_parquet(paths["stations"])
+    assert stations["municipality_code"].tolist() == ["4314902"]

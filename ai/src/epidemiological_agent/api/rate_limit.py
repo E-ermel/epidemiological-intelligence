@@ -72,7 +72,3 @@ class RateLimiter:
 # Cada mensagem do chat gasta créditos da OpenAI (às vezes várias
 # chamadas, com tools); 20/hora cobre uma conversa normal com folga.
 chat_rate_limit = RateLimiter(max_requests=20, window_seconds=3600)
-
-# Retreino é um job de até 1h (2 CPU / 4 GiB). Além deste limite, as
-# rotas recusam com 409 enquanto já houver uma execução rodando.
-retrain_rate_limit = RateLimiter(max_requests=3, window_seconds=3600)

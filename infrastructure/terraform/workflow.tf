@@ -1,8 +1,8 @@
 # ============================================================
 # Cloud Workflows - orquestração do pipeline
 #
-# Substitui o Airflow: inmet + sinan (em paralelo) -> gold (que
-# também carrega o BigQuery) -> modelagem.
+# Substitui o Airflow: ingestão e silver de cada fonte (em paralelo) ->
+# gold (que também carrega o BigQuery) -> alerta de surtos.
 # Execução manual: gcloud workflows run epidemiological-pipeline --location=us-central1
 # ============================================================
 
@@ -17,15 +17,26 @@ resource "google_service_account" "pipeline_workflow" {
 
 locals {
   pipeline_jobs = {
-    ibge_ingest  = google_cloud_run_v2_job.de["ibge-ingest"]
-    inmet_ingest = google_cloud_run_v2_job.de["inmet-ingest"]
-    sih_ingest   = google_cloud_run_v2_job.de["sih-ingest"]
-    ibge         = google_cloud_run_v2_job.de["ibge"]
-    inmet        = google_cloud_run_v2_job.de["inmet"]
-    sih          = google_cloud_run_v2_job.de["sih"]
-    sinan        = google_cloud_run_v2_job.de["sinan"]
-    gold         = google_cloud_run_v2_job.de["gold"]
-    ds           = google_cloud_run_v2_job.data_science
+    ibge_ingest      = google_cloud_run_v2_job.de["ibge-ingest"]
+    inmet_ingest     = google_cloud_run_v2_job.de["inmet-ingest"]
+    sih_ingest       = google_cloud_run_v2_job.de["sih-ingest"]
+    sinan_ingest     = google_cloud_run_v2_job.de["sinan-ingest"]
+    sidra_ingest     = google_cloud_run_v2_job.de["sidra-ingest"]
+    sidra            = google_cloud_run_v2_job.de["sidra"]
+    atlas_ingest     = google_cloud_run_v2_job.de["atlas-ingest"]
+    atlas            = google_cloud_run_v2_job.de["atlas"]
+    mapbiomas_ingest = google_cloud_run_v2_job.de["mapbiomas-ingest"]
+    mapbiomas        = google_cloud_run_v2_job.de["mapbiomas"]
+    prodes_ingest    = google_cloud_run_v2_job.de["prodes-ingest"]
+    prodes           = google_cloud_run_v2_job.de["prodes"]
+    snis_ingest      = google_cloud_run_v2_job.de["snis-ingest"]
+    snis             = google_cloud_run_v2_job.de["snis"]
+    ibge             = google_cloud_run_v2_job.de["ibge"]
+    inmet            = google_cloud_run_v2_job.de["inmet"]
+    sih              = google_cloud_run_v2_job.de["sih"]
+    sinan            = google_cloud_run_v2_job.de["sinan"]
+    gold             = google_cloud_run_v2_job.de["gold"]
+    ds               = google_cloud_run_v2_job.data_science
   }
 }
 
@@ -46,7 +57,7 @@ resource "google_workflows_workflow" "pipeline" {
   project         = var.project_id
   name            = "epidemiological-pipeline"
   region          = var.region
-  description     = "ingestao (ibge, inmet, sih) -> ibge -> inmet + sih + sinan -> gold (+ BigQuery) -> modelagem"
+  description     = "ingestao (ibge, inmet, sih, sinan, sidra, atlas, mapbiomas, prodes, snis) -> ibge -> silver de cada fonte -> gold nacional (+ BigQuery) -> alerta de surtos"
   service_account = google_service_account.pipeline_workflow.id
 
   # job.id = "projects/<p>/locations/<r>/jobs/<nome>", o formato que o

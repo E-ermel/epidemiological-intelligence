@@ -2,7 +2,11 @@
 export interface EpidemiologicalRecord {
   referenceDate: string;
   disease: string;
+  /** Municipality name, or the state/"BRASIL" label for aggregated records. */
   municipality: string;
+  state: string | null;
+  /** null when the record is aggregated over a state or Brazil. */
+  municipalityCode: string | null;
   cases: number | null;
   precipitationSumMm: number | null;
   precipitationMaxObservationMm: number | null;
@@ -16,7 +20,17 @@ export interface EpidemiologicalRecord {
 
 export interface EpidemiologicalDataFilters {
   disease?: string;
-  municipality?: string;
+  /** Two-letter UF code. */
+  state?: string;
+  /** 6-digit DATASUS code -- names alone repeat across states. */
+  municipalityCode?: string;
   startDate?: string;
   endDate?: string;
+}
+
+/** Mirrors ai/src/epidemiological_agent/api/schemas_geo.py's MunicipalityOption. */
+export interface MunicipalityOption {
+  code: string;
+  name: string;
+  state: string;
 }

@@ -3,9 +3,18 @@ import type {
   CaseCurvePoint,
   OverviewMetrics,
 } from "@/types/epidemiology";
-import type { EpidemiologicalDataFilters, EpidemiologicalRecord } from "@/types/data";
+import type {
+  EpidemiologicalDataFilters,
+  EpidemiologicalRecord,
+  MunicipalityOption,
+} from "@/types/data";
 import type { GeoArea, MapLevel } from "@/types/map";
-import type { ModelMetadata, ObservedVsPredictedPoint } from "@/types/model";
+import type {
+  AlertFilters,
+  AlertModelInfo,
+  AlertRecord,
+  AlertStateSummary,
+} from "@/types/alert";
 
 /**
  * Single source of truth for the FastAPI base URL. Never hardcode a
@@ -42,10 +51,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
-    // 409 (retreino já em andamento) e 429 (limite de requisições) trazem
-    // uma mensagem pronta para o usuário em `detail` -- ver
-    // ai/src/epidemiological_agent/api/rate_limit.py.
-    if (response.status === 409 || response.status === 429) {
+    // 429 (limite de requisições do chat) e 404 do alerta (job ainda não
+    // rodou) trazem uma mensagem pronta para o usuário em `detail` -- ver
+    // ai/src/epidemiological_agent/api/.
+    if (response.status === 404 || response.status === 429) {
       const body = await response.json().catch(() => null);
       if (typeof body?.detail === "string") {
         throw new ApiError(body.detail, response.status);
@@ -111,7 +120,8 @@ export interface ApiStudySummary {
   disease: string;
   totalCases: number;
   municipalityCount: number;
-  activeModelVersion: string | null;
+  statesInAlert: number | null;
+  maxAlertProbability: number | null;
 }
 
 export interface OverviewFilters {
@@ -152,64 +162,46 @@ export function getStudiesData() {
   return request<ApiStudySummary[]>("/studies");
 }
 
-/** Maps 1:1 to GET /models. */
-export function getModelsData() {
-  return request<ModelMetadata[]>("/models");
+/** Maps 1:1 to GET /alerts?level=&origin_type=&disease=&state=&municipality_code=&horizon=&only_alerts=&limit=. */
+export function getAlerts(filters: AlertFilters = {}) {
+  const params = new URLSearchParams();
+  if (filters.level) params.set("level", filters.level);
+  if (filters.originType) params.set("origin_type", filters.originType);
+  if (filters.disease) params.set("disease", filters.disease);
+  if (filters.state) params.set("state", filters.state);
+  if (filters.municipalityCode) params.set("municipality_code", filters.municipalityCode);
+  if (filters.horizon) params.set("horizon", String(filters.horizon));
+  if (filters.onlyAlerts) params.set("only_alerts", "true");
+  if (filters.limit) params.set("limit", String(filters.limit));
+
+  const query = params.toString();
+  return request<AlertRecord[]>(`/alerts${query ? `?${query}` : ""}`);
 }
 
-/** Maps 1:1 to GET /models/{disease}/predictions?municipality=. */
-export function getModelPredictions(disease: string, municipality?: string) {
-  const query = municipality
-    ? `?municipality=${encodeURIComponent(municipality)}`
-    : "";
-  return request<ObservedVsPredictedPoint[]>(
-    `/models/${encodeURIComponent(disease)}/predictions${query}`
-  );
+/** Maps 1:1 to GET /alerts/states?origin_type=&horizon=&disease=. */
+export function getAlertStates(originType: string, horizon: number, disease?: string) {
+  const params = new URLSearchParams({ origin_type: originType, horizon: String(horizon) });
+  if (disease) params.set("disease", disease);
+  return request<AlertStateSummary[]>(`/alerts/states?${params.toString()}`);
 }
 
-export interface ApiRetrainResponse {
-  status: string;
-  executionName: string;
+/** Maps 1:1 to GET /alerts/model (404 before the alert job's first run). */
+export function getAlertModel() {
+  return request<AlertModelInfo>("/alerts/model");
 }
 
-/** Maps 1:1 to POST /models/{disease}/retrain. */
-export function retrainModel(disease: string) {
-  return request<ApiRetrainResponse>(`/models/${encodeURIComponent(disease)}/retrain`, {
-    method: "POST",
-  });
+/** Maps 1:1 to GET /municipalities?state=. */
+export function getMunicipalitiesData(state?: string) {
+  const query = state ? `?state=${encodeURIComponent(state)}` : "";
+  return request<MunicipalityOption[]>(`/municipalities${query}`);
 }
 
-/** Maps 1:1 to POST /models/retrain (bulk -- every disease in one job execution). */
-export function retrainAllModels() {
-  return request<ApiRetrainResponse>("/models/retrain", {
-    method: "POST",
-  });
-}
-
-export interface ApiRetrainExecutionStatus {
-  status: "running" | "succeeded" | "failed";
-  logUri: string | null;
-  startTime: string | null;
-  completionTime: string | null;
-}
-
-/** Maps 1:1 to GET /models/retrain/status?execution=. */
-export function getRetrainExecutionStatus(executionName: string) {
-  return request<ApiRetrainExecutionStatus>(
-    `/models/retrain/status?execution=${encodeURIComponent(executionName)}`
-  );
-}
-
-/** Maps 1:1 to GET /municipalities. */
-export function getMunicipalitiesData() {
-  return request<string[]>("/municipalities");
-}
-
-/** Maps 1:1 to GET /data?disease=&municipality=&start_date=&end_date=. */
+/** Maps 1:1 to GET /data?disease=&state=&municipality_code=&start_date=&end_date=. */
 export function getEpidemiologicalData(filters: EpidemiologicalDataFilters) {
   const params = new URLSearchParams();
   if (filters.disease) params.set("disease", filters.disease);
-  if (filters.municipality) params.set("municipality", filters.municipality);
+  if (filters.state) params.set("state", filters.state);
+  if (filters.municipalityCode) params.set("municipality_code", filters.municipalityCode);
   if (filters.startDate) params.set("start_date", filters.startDate);
   if (filters.endDate) params.set("end_date", filters.endDate);
 

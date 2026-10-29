@@ -6,7 +6,7 @@ export default function AgentPage() {
     <div>
       <PageHeader
         title="Assistente Epidemiológico"
-        description="Converse com o agente sobre casos, métricas de modelos, previsões e metodologia."
+        description="Converse com o agente sobre casos, clima, alertas de surto e metodologia."
       />
       <ChatPanel />
     </div>

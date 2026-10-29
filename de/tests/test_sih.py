@@ -1,7 +1,8 @@
 import pandas as pd
 import pytest
 
-from epidemiological_de.sih import extract, pipeline, transform
+from epidemiological_de import dbc
+from epidemiological_de.sih import pipeline, transform
 
 
 def write_dbf(path, fields, rows, deleted=()):
@@ -50,7 +51,7 @@ def test_read_dbf_returns_requested_columns_and_skips_deleted(tmp_path):
         deleted={1},
     )
 
-    df = extract.read_dbf(str(path), ["MUNIC_RES", "DIAG_PRINC", "IDENT", "NOME"])
+    df = dbc.read_dbf(str(path), ["MUNIC_RES", "DIAG_PRINC", "IDENT", "NOME"])
 
     assert list(df.columns) == ["MUNIC_RES", "DIAG_PRINC", "IDENT", "NOME"]
     assert df.to_dict("records") == [
@@ -64,7 +65,7 @@ def test_read_dbf_fails_on_missing_column(tmp_path):
     write_dbf(path, FIELDS, [])
 
     with pytest.raises(KeyError, match="CID_X"):
-        extract.read_dbf(str(path), ["CID_X"])
+        dbc.read_dbf(str(path), ["CID_X"])
 
 
 def test_classify_disease_uses_tabnet_cid_groups():
@@ -117,6 +118,19 @@ def test_combine_sums_the_same_month_arriving_in_different_competencias():
     assert combined["hospitalizations"].tolist() == [2]
 
 
+def test_mark_provisional_flags_months_close_to_latest_competencia():
+    silver = pd.DataFrame({"year": [2026, 2026, 2026, 2025], "month": [4, 5, 8, 12], "hospitalizations": [1, 1, 1, 1]})
+
+    marked = transform.mark_provisional(silver, latest_competencia=(2026, 8), provisional_months=4)
+
+    # Última competência 08/2026: maio a agosto ainda recebem AIHs.
+    assert marked["is_provisional"].tolist() == [False, True, True, False]
+
+
+def test_competencia_comes_from_file_name():
+    assert pipeline.competencia("gs://b/bronze/sih/uf=RS/RDRS2608.dbc") == (2026, 8)
+
+
 def test_process_uf_writes_partition_per_uf(tmp_path, monkeypatch):
     bronze = tmp_path / "bronze"
     for name in ("RDRS2401.dbc", "RDRS2402.dbc"):
@@ -125,7 +139,7 @@ def test_process_uf_writes_partition_per_uf(tmp_path, monkeypatch):
         (bronze / "sih" / "uf=RS" / f"{name}.manifest.json").write_text("{}")
 
     monkeypatch.setattr(
-        pipeline.extract,
+        pipeline.dbc,
         "read_dbc",
         lambda path, columns: _records(("430460", "431490", "J450", "20240115", "1")),
     )
@@ -135,6 +149,7 @@ def test_process_uf_writes_partition_per_uf(tmp_path, monkeypatch):
 
     stored = pd.read_parquet(f"{silver_root}/uf=RS/part-0.parquet")
     assert stored["hospitalizations"].tolist() == [2]  # um por arquivo, manifestos ignorados
+    assert stored["is_provisional"].tolist() == [True]  # janeiro, última competência fevereiro
 
 
 def test_process_uf_fails_without_bronze(tmp_path):

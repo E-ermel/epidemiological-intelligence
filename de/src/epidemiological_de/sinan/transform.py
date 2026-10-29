@@ -1,88 +1,123 @@
-from datetime import datetime, timezone
+"""
+Fichas do SINAN -> casos por doença, município e mês.
+
+Dois municípios por caso, como no SIH: o de residência (contagem
+principal) e o do evento -- o provável de infecção na leptospirose e o
+do acidente nos peçonhentos. O do evento costuma vir em branco quando a
+investigação não o apurou; aí o caso conta só na residência.
+
+O mês é o do evento (primeiros sintomas; data do acidente), o mais
+perto da exposição. A exportação manual do TabNet usava município e mês
+de notificação.
+"""
 
 import pandas as pd
 
+LEPT_COLUMNS = ["ID_MN_RESI", "COMUNINF", "DT_SIN_PRI", "CLASSI_FIN"]
+ANIM_COLUMNS = ["ID_MN_RESI", "ANT_MUNIC_", "ANT_DT_ACI", "DT_SIN_PRI", "TP_ACIDENT"]
 
-MONTH_MAP = {
-    "Jan": 1, "Fev": 2, "Mar": 3, "Abr": 4, "Mai": 5, "Jun": 6,
-    "Jul": 7, "Ago": 8, "Set": 9, "Out": 10, "Nov": 11, "Dez": 12,
+RAW_COLUMNS = {"LEPT": LEPT_COLUMNS, "ANIM": ANIM_COLUMNS}
+
+# TP_ACIDENT da ficha de acidentes por animais peçonhentos. Cada tipo
+# tem relação diferente com o clima (o escorpionismo é urbano e sazonal,
+# o ofidismo é rural), então vira uma "doença" própria.
+VENOMOUS_ANIMALS = {
+    "1": "ACIDENTE POR SERPENTE",
+    "2": "ACIDENTE POR ARANHA",
+    "3": "ACIDENTE POR ESCORPIÃO",
+    "4": "ACIDENTE POR LAGARTA",
+    "5": "ACIDENTE POR ABELHA",
 }
+OTHER_VENOMOUS = "ACIDENTE POR OUTRO ANIMAL PEÇONHENTO"  # 6 = outros, 9/branco = ignorado
+
+LEPTOSPIROSIS = "LEPTOSPIROSE"
+CONFIRMED = "1"
 
 SILVER_COLUMNS = [
-    "municipality_code", "municipality", "year", "month",
-    "reference_date", "cases", "disease", "source_file", "ingestion_timestamp",
+    "disease",
+    "residence_municipality_code",
+    "occurrence_municipality_code",
+    "year",
+    "month",
+    "cases",
 ]
 
-
-def _parse_cases(valor: object) -> object:
-    if pd.isna(valor):
-        return pd.NA
-
-    trimmed = str(valor).strip()
-    if trimmed == "SEM":
-        return pd.NA
-    if trimmed == "-":
-        return 0
-    try:
-        return int(trimmed)
-    except ValueError:
-        # mirrors try_cast: invalid numeric strings become null, not an error
-        return pd.NA
+GROUP_KEYS = SILVER_COLUMNS[:-1]
 
 
-def process_sinan_file(
-    df: pd.DataFrame,
-    disease_name: str,
-    source_file: str,
-) -> pd.DataFrame:
+def _blank_to_na(series: pd.Series) -> pd.Series:
+    return series.mask(series.fillna("").str.strip() == "", pd.NA)
 
-    df = df.copy()
 
-    municipality_column = df.columns[0]
-    month_columns = [c for c in df.columns if c != municipality_column]
+def leptospirosis_events(records: pd.DataFrame) -> pd.DataFrame:
+    """Só casos confirmados (CLASSI_FIN = 1), como no TabNet."""
 
-    df_long = df.rename(columns={municipality_column: "municipio"}).melt(
-        id_vars="municipio",
-        value_vars=month_columns,
-        var_name="ano_mes",
-        value_name="valor",
+    df = records[records["CLASSI_FIN"] == CONFIRMED]
+
+    return pd.DataFrame(
+        {
+            "disease": LEPTOSPIROSIS,
+            "residence_municipality_code": _blank_to_na(df["ID_MN_RESI"]),
+            "occurrence_municipality_code": _blank_to_na(df["COMUNINF"]),
+            "event_date": df["DT_SIN_PRI"],
+        }
     )
 
-    # reindex garante as duas colunas: Spark getItem(1) devolve null quando o
-    # header não tem "/", enquanto o expand do pandas devolveria só a coluna 0.
-    ano_mes_split = (
-        df_long["ano_mes"]
-        .astype("string")
-        .str.split("/", n=1, expand=True)
-        .reindex(columns=[0, 1])
-    )
-    df_long["year"] = pd.to_numeric(ano_mes_split[0], errors="coerce").astype("Int64")
-    df_long["month_name"] = ano_mes_split[1]
-    df_long["month"] = df_long["month_name"].map(MONTH_MAP).astype("Int64")
 
-    df_long["cases"] = df_long["valor"].apply(_parse_cases).astype("Int64")
+def venomous_accident_events(records: pd.DataFrame) -> pd.DataFrame:
+    """Toda notificação conta (a ficha não tem classificação final)."""
 
-    # regexp_extract do Spark devolve string vazia quando não casa, não null.
-    df_long["municipality_code"] = (
-        df_long["municipio"].str.extract(r"^(\d+)", expand=False).fillna("")
-    )
-    df_long["municipality"] = (
-        df_long["municipio"]
-        .str.replace(r"^\d+\s*", "", regex=True)
-        .str.strip()
-        .str.upper()
+    accident_date = _blank_to_na(records["ANT_DT_ACI"]).fillna(records["DT_SIN_PRI"])
+
+    return pd.DataFrame(
+        {
+            "disease": records["TP_ACIDENT"].map(VENOMOUS_ANIMALS).fillna(OTHER_VENOMOUS),
+            "residence_municipality_code": _blank_to_na(records["ID_MN_RESI"]),
+            "occurrence_municipality_code": _blank_to_na(records["ANT_MUNIC_"]),
+            "event_date": accident_date,
+        }
     )
 
-    year_str = df_long["year"].astype("string")
-    month_str = df_long["month"].astype("string").str.zfill(2)
-    df_long["reference_date"] = pd.to_datetime(
-        year_str + "-" + month_str + "-01",
-        format="%Y-%m-%d",
-        errors="coerce",
+
+EVENT_BUILDERS = {"LEPT": leptospirosis_events, "ANIM": venomous_accident_events}
+
+
+def aggregate_cases(events: pd.DataFrame, first_year: int) -> pd.DataFrame:
+    """
+    Eventos -> contagem por doença, residência, local do evento e mês.
+    Eventos antes de `first_year` saem: estão em arquivos que não foram
+    baixados, então esses meses viriam incompletos.
+    """
+
+    df = events.assign(
+        year=pd.to_numeric(events["event_date"].str[:4], errors="coerce"),
+        month=pd.to_numeric(events["event_date"].str[4:6], errors="coerce"),
     )
+    df = df[df["year"].ge(first_year) & df["month"].between(1, 12)]
 
-    df_long["disease"] = disease_name
-    df_long["source_file"] = source_file
-    df_long["ingestion_timestamp"] = datetime.now(timezone.utc)
+    # dropna=False: caso sem local do evento ainda conta na residência.
+    return (
+        df.groupby(GROUP_KEYS, as_index=False, dropna=False)
+        .size()
+        .rename(columns={"size": "cases"})
+        .astype({"year": "int64", "month": "int64", "cases": "int64"})
+    )[SILVER_COLUMNS]
 
-    return df_long[SILVER_COLUMNS]
+
+def mark_provisional(silver: pd.DataFrame, preliminary_years: set[int]) -> pd.DataFrame:
+    """is_provisional = ano cuja base o DATASUS ainda publica como preliminar (PRELIM)."""
+
+    return silver.assign(is_provisional=silver["year"].isin(preliminary_years))
+
+
+def combine(aggregates: list[pd.DataFrame]) -> pd.DataFrame:
+    """Soma agregados de vários anos: um caso de dezembro pode ser notificado em janeiro."""
+
+    if not aggregates:
+        return pd.DataFrame(columns=SILVER_COLUMNS)
+
+    return (
+        pd.concat(aggregates, ignore_index=True)
+        .groupby(GROUP_KEYS, as_index=False, dropna=False)["cases"]
+        .sum()
+    )[SILVER_COLUMNS]

@@ -14,9 +14,16 @@ import os
 import fsspec
 import pandas as pd
 
-from epidemiological_de import config, storage
-from epidemiological_de.sih import extract, transform
-from epidemiological_de.sih.ingest import task_ufs
+from epidemiological_de import config, dbc, storage
+from epidemiological_de.sih import transform
+from epidemiological_de.sih.ingest import FILE_PATTERN, task_ufs
+
+
+def competencia(path: str) -> tuple[int, int]:
+    """(ano, mês) de processamento pelo nome do arquivo: RDRS2401.dbc -> (2024, 1)."""
+
+    _, yy, mm = FILE_PATTERN.match(path.rstrip("/").split("/")[-1]).groups()
+    return 2000 + int(yy), int(mm)
 
 
 def list_dbc_files(uf: str, root: str | None = None) -> list[str]:
@@ -28,7 +35,7 @@ def list_dbc_files(uf: str, root: str | None = None) -> list[str]:
     return sorted(
         f"{prefix}{path}"
         for path in fs.glob(f"{base}/*")
-        if path.lower().endswith(".dbc")
+        if FILE_PATTERN.match(path.rstrip("/").split("/")[-1])
     )
 
 
@@ -42,11 +49,14 @@ def process_uf(uf: str, root: str | None = None, silver_root: str | None = None)
 
     aggregates, raw_records = [], 0
     for path in files:
-        records = extract.read_dbc(path, transform.RAW_COLUMNS)
+        records = dbc.read_dbc(path, transform.RAW_COLUMNS)
         raw_records += len(records)
         aggregates.append(transform.aggregate_hospitalizations(records, config.SIH_FIRST_YEAR))
 
-    silver = transform.combine(aggregates)
+    latest = max(competencia(path) for path in files)
+    silver = transform.mark_provisional(
+        transform.combine(aggregates), latest, config.SIH_PROVISIONAL_MONTHS
+    )
 
     dest_dir = f"{(silver_root or config.SIH_SILVER_PATH).rstrip('/')}/uf={uf}"
     dest = f"{dest_dir}/part-0.parquet"

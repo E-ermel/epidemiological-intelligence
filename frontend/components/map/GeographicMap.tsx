@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { geoMercator, geoPath } from "d3-geo";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { GeoArea, MapBubble, MapLevel } from "@/types/map";
-import { RS_MAP_VIEWBOX_HEIGHT, RS_MAP_VIEWBOX_WIDTH } from "@/mocks/geography";
 import { IBGE_CODAREA_TO_UF } from "@/components/map/ibgeStateCodes";
 import { formatNumber } from "@/lib/utils";
 import brazilStatesGeoJson from "@/data/geo/brasil-uf.json";
@@ -16,14 +15,15 @@ import brazilStatesGeoJson from "@/data/geo/brasil-uf.json";
  * component -- see components/map/OverviewMap.tsx.
  *
  * Both levels render real boundaries from data/geo/brasil-uf.json (IBGE):
- * country level as a 27-state choropleth, state level (today, only RS) as
- * a single extracted-and-refit polygon used as the backdrop for
- * municipality markers -- see the Fase 2 plan for why municipality-level
- * real polygons weren't pursued (curated marker positions instead).
+ * country level as a 27-state choropleth, state level as the selected
+ * state's polygon, refit to the viewBox, as the backdrop for one marker
+ * per municipality at its IBGE centroid.
  */
 
 const COUNTRY_VIEWBOX_WIDTH = 460;
 const COUNTRY_VIEWBOX_HEIGHT = 480;
+const STATE_VIEWBOX_WIDTH = 460;
+const STATE_VIEWBOX_HEIGHT = 460;
 const MAP_MAX_HEIGHT = 560;
 
 type StateFeature = Feature<Geometry, { codarea: string }>;
@@ -39,27 +39,24 @@ const STATE_PROJECTION = geoMercator().fitSize(
 );
 const STATE_PATH_GENERATOR = geoPath(STATE_PROJECTION);
 
-const RS_FEATURE = STATES_GEOJSON.features.find(
-  (feature: StateFeature) => IBGE_CODAREA_TO_UF[feature.properties.codarea] === "RS"
-);
+/** Polygon and projection of one state, fit to the state-level viewBox. */
+function stateGeometry(stateCode: string | undefined) {
+  const feature = STATES_GEOJSON.features.find(
+    (f: StateFeature) => IBGE_CODAREA_TO_UF[f.properties.codarea] === stateCode
+  );
+  if (!feature) return null;
 
-const RS_PROJECTION = RS_FEATURE
-  ? geoMercator().fitSize([RS_MAP_VIEWBOX_WIDTH, RS_MAP_VIEWBOX_HEIGHT], RS_FEATURE)
-  : null;
-const RS_PATH_GENERATOR = RS_PROJECTION ? geoPath(RS_PROJECTION) : null;
-const RS_PATH_D = RS_FEATURE && RS_PATH_GENERATOR ? (RS_PATH_GENERATOR(RS_FEATURE) ?? undefined) : undefined;
+  const projection = geoMercator().fitSize([STATE_VIEWBOX_WIDTH, STATE_VIEWBOX_HEIGHT], feature);
+  return { projection, pathD: geoPath(projection)(feature) ?? undefined };
+}
 
-/** Projects a municipality's real lat/lon into the RS viewBox's pixel
- * space, using the exact same projection as the RS polygon itself --
- * this is what makes a marker land on the municipality it names.
- * Rounded to 2 decimals (thousandths of a pixel, invisible either way):
+/** Rounded to 2 decimals (thousandths of a pixel, invisible either way):
  * d3-geo's Mercator math goes through Math.tan/Math.log, and Node's
  * V8 vs. the browser's V8 can disagree in the last couple of binary
  * digits -- unrounded, that's a real (if microscopic) SSR/CSR
- * hydration mismatch on every marker, not just a cosmetic risk. */
-function projectMunicipality(bubble: MapBubble): [number, number] {
-  if (!RS_PROJECTION) return [0, 0];
-  const [x, y] = RS_PROJECTION([bubble.lon, bubble.lat]) ?? [0, 0];
+ * hydration mismatch on every marker. */
+function project(projection: ReturnType<typeof geoMercator>, bubble: MapBubble): [number, number] {
+  const [x, y] = projection([bubble.lon, bubble.lat]) ?? [0, 0];
   return [Math.round(x * 100) / 100, Math.round(y * 100) / 100];
 }
 
@@ -94,6 +91,8 @@ export function GeographicMap({
     [countryAreas]
   );
 
+  const state = useMemo(() => stateGeometry(stateCode), [stateCode]);
+
   if (level === "country") {
     return (
       <div className="relative">
@@ -125,7 +124,7 @@ export function GeographicMap({
                     name: area?.name ?? sigla ?? feature.properties.codarea,
                     detail: area?.hasData
                       ? `${formatNumber(area.cases)} casos`
-                      : "Sem dados no momento",
+                      : "Nenhum caso no período",
                     x: cx,
                     y: cy,
                   })
@@ -149,35 +148,42 @@ export function GeographicMap({
     );
   }
 
-  // State level (RS): real polygon backdrop + municipality markers.
+  // State level: real polygon backdrop + one marker per municipality.
+  if (!state) return null;
+
   const maxCases = Math.max(1, ...bubbles.filter((b) => b.hasData).map((b) => b.cases));
+  // States have up to 853 municipalities (MG): smaller markers than the
+  // old 27-municipality RS map, area proportional to cases.
+  const minRadius = bubbles.length > 200 ? 1.5 : 3;
+  const maxRadius = bubbles.length > 200 ? 9 : 14;
 
   function radiusFor(bubble: MapBubble) {
-    if (!bubble.hasData) return 3.5;
-    const minRadius = 5;
-    const maxRadius = 15;
+    if (!bubble.hasData) return minRadius * 0.7;
     const ratio = Math.sqrt(bubble.cases / maxCases);
     return minRadius + ratio * (maxRadius - minRadius);
   }
 
+  // Bigger markers drawn first, so small ones stay hoverable on top.
+  const ordered = [...bubbles].sort((a, b) => b.cases - a.cases);
+
   return (
     <div className="relative">
       <svg
-        viewBox={`0 0 ${RS_MAP_VIEWBOX_WIDTH} ${RS_MAP_VIEWBOX_HEIGHT}`}
+        viewBox={`0 0 ${STATE_VIEWBOX_WIDTH} ${STATE_VIEWBOX_HEIGHT}`}
         className="w-full"
         style={{ maxHeight: MAP_MAX_HEIGHT }}
         role="img"
         aria-label={`Mapa de ${stateCode}`}
       >
         <path
-          d={RS_PATH_D}
+          d={state.pathD}
           fill="var(--color-primary-50)"
           stroke="var(--color-primary-100)"
           strokeWidth={2}
         />
 
-        {bubbles.map((bubble) => {
-          const [cx, cy] = projectMunicipality(bubble);
+        {ordered.map((bubble) => {
+          const [cx, cy] = project(state.projection, bubble);
           const isClickable = bubble.hasData && Boolean(onSelectBubble);
 
           return (
@@ -189,12 +195,12 @@ export function GeographicMap({
               fill={bubble.hasData ? "var(--color-primary-600)" : "var(--color-border-strong)"}
               fillOpacity={bubble.hasData ? 0.75 : 0.5}
               stroke="var(--color-surface)"
-              strokeWidth={1.5}
+              strokeWidth={bubbles.length > 200 ? 0.75 : 1.5}
               className={isClickable ? "cursor-pointer transition-opacity hover:opacity-90" : undefined}
               onMouseEnter={() =>
                 setHoveredLabel({
                   name: bubble.name,
-                  detail: bubble.hasData ? `${formatNumber(bubble.cases)} casos` : "Sem dados no momento",
+                  detail: bubble.hasData ? `${formatNumber(bubble.cases)} casos` : "Nenhum caso no período",
                   x: cx,
                   y: cy,
                 })

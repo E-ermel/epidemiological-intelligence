@@ -8,15 +8,14 @@ export const NAV_ITEMS = [
   { label: "Visão Geral", href: "/" },
   { label: "Estudos", href: "/estudos" },
   { label: "Explorar Dados", href: "/dados" },
-  { label: "Modelos", href: "/modelos" },
+  { label: "Alertas", href: "/alertas" },
   { label: "Agente IA", href: "/agente" },
 ] as const;
 
 /**
- * Mirrors MODEL_CONFIG in
- * data_science/src/epidemiological_intelligence/modeling/configs.py.
- * Keep in sync with the backend -- this is the authoritative list of
- * diseases the pipeline actually models.
+ * Every disease in the Gold table (see types/epidemiology.ts). The
+ * first group comes from SIH/SUS hospitalizations, the second from
+ * SINAN notifications.
  */
 export const DISEASES: { code: DiseaseCode; label: string }[] = [
   { code: "ASMA", label: "Asma" },
@@ -24,7 +23,14 @@ export const DISEASES: { code: DiseaseCode; label: string }[] = [
   { code: "BRONQUITE CRÔNICA", label: "Bronquite Crônica" },
   { code: "INFARTO AGUDO DO MIOCÁRDIO", label: "Infarto Agudo do Miocárdio" },
   { code: "INSUFICIÊNCIA CARDÍACA", label: "Insuficiência Cardíaca" },
+  { code: "OROPOUCHE", label: "Oropouche" },
   { code: "LEPTOSPIROSE", label: "Leptospirose" },
+  { code: "ACIDENTE POR ESCORPIÃO", label: "Acidente por Escorpião" },
+  { code: "ACIDENTE POR SERPENTE", label: "Acidente por Serpente" },
+  { code: "ACIDENTE POR ARANHA", label: "Acidente por Aranha" },
+  { code: "ACIDENTE POR ABELHA", label: "Acidente por Abelha" },
+  { code: "ACIDENTE POR LAGARTA", label: "Acidente por Lagarta" },
+  { code: "ACIDENTE POR OUTRO ANIMAL PEÇONHENTO", label: "Outros Animais Peçonhentos" },
 ];
 
 export const DISEASE_LABELS: Record<DiseaseCode, string> = Object.fromEntries(
@@ -33,11 +39,11 @@ export const DISEASE_LABELS: Record<DiseaseCode, string> = Object.fromEntries(
 
 /**
  * One color per disease, reused everywhere a disease needs a visual
- * identity (DiseaseDistributionChart) so the
- * same disease reads as the same color across the app. Deliberately
- * all cool/blue-adjacent hues (blue, cyan, indigo, teal, violet, sky)
- * -- distinguishable without breaking the "predominância de azul, sem
- * neon" design language.
+ * identity (DiseaseDistributionChart) so the same disease reads as the
+ * same color across the app. The 6 hospitalization diseases keep the
+ * original cool hues; the SINAN diseases get muted warm/green hues.
+ * With 13 slices some pairs are close, so the list under the chart
+ * repeats each color next to its name and percentage.
  */
 export const DISEASE_COLORS: Record<DiseaseCode, string> = {
   ASMA: "#2563eb",
@@ -45,8 +51,46 @@ export const DISEASE_COLORS: Record<DiseaseCode, string> = {
   "BRONQUITE CRÔNICA": "#4f46e5",
   "INFARTO AGUDO DO MIOCÁRDIO": "#0d9488",
   "INSUFICIÊNCIA CARDÍACA": "#7c3aed",
+  OROPOUCHE: "#64748b",
   LEPTOSPIROSE: "#0369a1",
+  "ACIDENTE POR ESCORPIÃO": "#d97706",
+  "ACIDENTE POR SERPENTE": "#15803d",
+  "ACIDENTE POR ARANHA": "#be123c",
+  "ACIDENTE POR ABELHA": "#ca8a04",
+  "ACIDENTE POR LAGARTA": "#65a30d",
+  "ACIDENTE POR OUTRO ANIMAL PEÇONHENTO": "#9a3412",
 };
+
+/** UF codes and names, for the state pickers. */
+export const STATES: { code: string; name: string }[] = [
+  { code: "AC", name: "Acre" },
+  { code: "AL", name: "Alagoas" },
+  { code: "AM", name: "Amazonas" },
+  { code: "AP", name: "Amapá" },
+  { code: "BA", name: "Bahia" },
+  { code: "CE", name: "Ceará" },
+  { code: "DF", name: "Distrito Federal" },
+  { code: "ES", name: "Espírito Santo" },
+  { code: "GO", name: "Goiás" },
+  { code: "MA", name: "Maranhão" },
+  { code: "MG", name: "Minas Gerais" },
+  { code: "MS", name: "Mato Grosso do Sul" },
+  { code: "MT", name: "Mato Grosso" },
+  { code: "PA", name: "Pará" },
+  { code: "PB", name: "Paraíba" },
+  { code: "PE", name: "Pernambuco" },
+  { code: "PI", name: "Piauí" },
+  { code: "PR", name: "Paraná" },
+  { code: "RJ", name: "Rio de Janeiro" },
+  { code: "RN", name: "Rio Grande do Norte" },
+  { code: "RO", name: "Rondônia" },
+  { code: "RR", name: "Roraima" },
+  { code: "RS", name: "Rio Grande do Sul" },
+  { code: "SC", name: "Santa Catarina" },
+  { code: "SE", name: "Sergipe" },
+  { code: "SP", name: "São Paulo" },
+  { code: "TO", name: "Tocantins" },
+];
 
 /**
  * Presentation-only copy -- the API has no business generating prose,
@@ -54,18 +98,34 @@ export const DISEASE_COLORS: Record<DiseaseCode, string> = {
  * API does return (GET /studies).
  */
 export const DISEASE_DESCRIPTIONS: Record<DiseaseCode, string> = {
-  ASMA: "Casos de asma associados a umidade relativa e ponto de orvalho, com defasagem climática de 1 mês.",
+  ASMA: "Internações por asma. Sobem no frio: a 13 °C, o risco é cerca de 19% maior que na temperatura mediana.",
   "BRONQUITE AGUDA":
-    "Casos de bronquite aguda associados a umidade e precipitação, com defasagem de até 3 meses.",
+    "Internações por bronquite aguda, fortemente sazonais. O frio aumenta o risco em cerca de 40%.",
   "BRONQUITE CRÔNICA":
-    "Casos de bronquite crônica associados à intensidade de rajadas de vento.",
+    "Internações por bronquite crônica/DPOC. É a doença mais sensível ao frio: risco cerca de 55% maior a 13 °C.",
   "INFARTO AGUDO DO MIOCÁRDIO":
-    "Casos de infarto associados à velocidade média do vento do mês anterior.",
+    "Internações por infarto. Sobem nos extremos de temperatura: +10% no frio e +17% no calor (31 °C).",
   "INSUFICIÊNCIA CARDÍACA":
-    "Casos de insuficiência cardíaca associados a pressão atmosférica e ponto de orvalho.",
+    "Internações por insuficiência cardíaca, cerca de 19% mais frequentes nos meses frios.",
+  OROPOUCHE:
+    "Internações por febre do Oropouche (CID A93.0). Quase só zeros antes de 2024, quando a doença se espalhou para fora da Amazônia; ainda sem alerta.",
   LEPTOSPIROSE:
-    "Casos de leptospirose associados a precipitação e umidade relativa do mês anterior -- o padrão sazonal mais forte da base.",
+    "Casos confirmados de leptospirose. É a doença mais ligada à chuva: um mês muito chuvoso multiplica o risco por até 3,7, com efeito no próprio mês e no seguinte.",
+  "ACIDENTE POR ESCORPIÃO":
+    "Notificações de acidentes com escorpião -- o tipo mais comum no país, urbano e fortemente sazonal (raros no frio).",
+  "ACIDENTE POR SERPENTE":
+    "Notificações de acidentes ofídicos, concentrados em áreas rurais e nos meses quentes.",
+  "ACIDENTE POR ARANHA":
+    "Notificações de acidentes com aranha, que no Sul têm pico no outono e no inverno.",
+  "ACIDENTE POR ABELHA": "Notificações de acidentes com abelha, mais comuns nos meses quentes e secos.",
+  "ACIDENTE POR LAGARTA":
+    "Notificações de acidentes com lagarta (erucismo), que sobem com a chuva (risco até 3,1 vezes maior).",
+  "ACIDENTE POR OUTRO ANIMAL PEÇONHENTO":
+    "Notificações de acidentes com outros animais peçonhentos ou com o animal não identificado.",
 };
+
+/** Diseases from SIH/SUS hospitalizations; the rest come from SINAN notifications. */
+export const HOSPITALIZATION_DISEASES: DiseaseCode[] = DISEASES.slice(0, 6).map((d) => d.code);
 
 /**
  * Climate fields on EpidemiologicalRecord (types/data.ts), paired with

@@ -1,47 +1,42 @@
 import pandas as pd
 from fastapi import APIRouter, Query
 
-from epidemiological_agent.api.gold_data import load_gold_dataframe
 from epidemiological_agent.api.schemas_data import EpidemiologicalRecord
-from epidemiological_agent.tools.bigquery_tools import query_epidemiological_data
+from epidemiological_agent.api.schemas_geo import MunicipalityOption
+from epidemiological_agent.tools import gold_queries
+from epidemiological_agent.tools.bigquery_tools import CLIMATE_COLUMNS, query_epidemiological_data
 
 router = APIRouter(tags=["data"])
-
-_CLIMATE_COLUMNS = [
-    "precipitation_sum_mm",
-    "precipitation_max_observation_mm",
-    "temperature_avg_c",
-    "dew_point_avg_c",
-    "relative_humidity_avg_pct",
-    "atmospheric_pressure_avg_mb",
-    "wind_speed_avg_ms",
-    "wind_gust_max_ms",
-]
 
 
 def _none_if_nan(value) -> float | None:
     # pd.isna() covers None, float NaN, and pandas' own NA marker
-    # (pd.NA -- what a nullable-dtype column, e.g. an Int64/Float64
-    # "cases" column with a missing LEFT JOIN match, actually holds).
-    # math.isnan(pd.NA) raises TypeError, and the old except branch
-    # returned pd.NA unchanged, which Pydantic then rejected as
-    # "not a valid float" -- a 500 on any row with a missing value.
+    # (pd.NA -- what a nullable-dtype column actually holds).
+    # math.isnan(pd.NA) raises TypeError; returning pd.NA unchanged made
+    # Pydantic reject it as "not a valid float" -- a 500 on any row
+    # with a missing value.
     if pd.isna(value):
         return None
     return float(value)
 
 
+def _none_if_missing(value) -> str | None:
+    return None if value is None or pd.isna(value) else str(value)
+
+
 @router.get("/data", response_model=list[EpidemiologicalRecord])
 def get_data(
     disease: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    municipality_code: str | None = Query(default=None),
     municipality: str | None = Query(default=None),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
 ) -> list[EpidemiologicalRecord]:
     """
-    Thin wrapper around query_epidemiological_data() -- the same 4
-    filters the Explorar Dados page's (currently disabled) filter bar
-    already draws.
+    Registros mensais para Explorar Dados e o painel de cada estudo.
+    Com município: as linhas dele. Sem: casos somados e clima médio por
+    mês, na UF filtrada ou no Brasil (ver query_epidemiological_data).
     """
 
     df = query_epidemiological_data(
@@ -49,6 +44,8 @@ def get_data(
         municipality=municipality,
         start_date=start_date,
         end_date=end_date,
+        state=state,
+        municipality_code=municipality_code,
     )
 
     return [
@@ -56,25 +53,28 @@ def get_data(
             reference_date=pd.Timestamp(row.reference_date).date().isoformat(),
             disease=row.disease,
             municipality=row.municipality,
+            state=_none_if_missing(getattr(row, "state", None)),
+            municipality_code=_none_if_missing(getattr(row, "municipality_code", None)),
             cases=_none_if_nan(row.cases),
             **{
                 column: _none_if_nan(getattr(row, column))
-                for column in _CLIMATE_COLUMNS
+                for column in CLIMATE_COLUMNS
             },
         )
         for row in df.itertuples()
     ]
 
 
-@router.get("/municipalities", response_model=list[str])
-def get_municipalities() -> list[str]:
+@router.get("/municipalities", response_model=list[MunicipalityOption])
+def get_municipalities(state: str | None = Query(default=None)) -> list[MunicipalityOption]:
     """
-    Distinct municipalities in the Gold table -- backs the municipality
-    <select> in Explorar Dados and the per-study dashboard, both of
-    which used to be a free-text field with no real list behind it.
-    Uses the cached full table (load_gold_dataframe) rather than a
-    fresh BigQuery query, same reasoning as /overview and /studies.
+    Municípios do IBGE (código de 6 dígitos, nome, UF) para os seletores
+    do frontend -- por código, já que o nome sozinho tem homônimos.
     """
 
-    df = load_gold_dataframe()
-    return sorted(df["municipality"].dropna().unique().tolist())
+    df = gold_queries.municipalities(state)
+
+    return [
+        MunicipalityOption(code=row.municipality_code, name=row.municipality_name, state=row.state)
+        for row in df.itertuples()
+    ]

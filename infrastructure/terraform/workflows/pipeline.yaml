@@ -6,7 +6,7 @@
 #   -> dim_municipality (IBGE)
 #   -> silver (INMET usa a dim + malha para ligar estação a município;
 #      SIH lê os .dbc por UF)
-#   -> gold (+ BigQuery) -> modelagem
+#   -> gold (+ BigQuery) -> alerta de surtos
 main:
   steps:
     - ingest:
@@ -38,6 +38,54 @@ main:
                         name: ${sih_ingest_job}
                         connector_params:
                           timeout: 7200
+            - sinan_ingest:
+                steps:
+                  - run_sinan_ingest:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${sinan_ingest_job}
+                        connector_params:
+                          timeout: 7200
+            - sidra_ingest:
+                steps:
+                  - run_sidra_ingest:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${sidra_ingest_job}
+                        connector_params:
+                          timeout: 7200
+            - atlas_ingest:
+                steps:
+                  - run_atlas_ingest:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${atlas_ingest_job}
+                        connector_params:
+                          timeout: 7200
+            - mapbiomas_ingest:
+                steps:
+                  - run_mapbiomas_ingest:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${mapbiomas_ingest_job}
+                        connector_params:
+                          timeout: 7200
+            - prodes_ingest:
+                steps:
+                  - run_prodes_ingest:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${prodes_ingest_job}
+                        connector_params:
+                          timeout: 7200
+            - snis_ingest:
+                steps:
+                  - run_snis_ingest:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${snis_ingest_job}
+                        connector_params:
+                          timeout: 7200
 
     - dim_municipality:
         call: googleapis.run.v2.projects.locations.jobs.run
@@ -57,8 +105,6 @@ main:
                         name: ${inmet_job}
                         connector_params:
                           timeout: 7200
-            # Silver do SIH. Ainda não alimenta o gold (vem no gold
-            # nacional), mas já fica atualizado a cada rodada.
             - sih:
                 steps:
                   - run_sih:
@@ -75,8 +121,51 @@ main:
                         name: ${sinan_job}
                         connector_params:
                           timeout: 7200
+            # População: usa a área da dim_municipality (passo anterior).
+            - sidra:
+                steps:
+                  - run_sidra:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${sidra_job}
+                        connector_params:
+                          timeout: 7200
+            - atlas:
+                steps:
+                  - run_atlas:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${atlas_job}
+                        connector_params:
+                          timeout: 7200
+            - mapbiomas:
+                steps:
+                  - run_mapbiomas:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${mapbiomas_job}
+                        connector_params:
+                          timeout: 7200
+            # Desmatamento: usa a área da dim_municipality, como o sidra.
+            - prodes:
+                steps:
+                  - run_prodes:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${prodes_job}
+                        connector_params:
+                          timeout: 7200
+            - snis:
+                steps:
+                  - run_snis:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${snis_job}
+                        connector_params:
+                          timeout: 7200
 
-    # O job gold também carrega o resultado no BigQuery (warehouse.py).
+    # Gold nacional (SIH + SINAN + clima por município); o job também
+    # carrega o resultado no BigQuery (warehouse.py).
     - silver_to_gold:
         call: googleapis.run.v2.projects.locations.jobs.run
         args:
@@ -84,7 +173,10 @@ main:
           connector_params:
             timeout: 7200
 
-    - modeling:
+    # Alerta de surtos (Chronos-2 + clima passado + cross-learning, ver
+    # data_science/study/): lê o gold no BigQuery e grava outbreak_alerts.
+    # ~25 min em CPU (o município é quase tudo).
+    - outbreak_alert:
         call: googleapis.run.v2.projects.locations.jobs.run
         args:
           name: ${ds_job}

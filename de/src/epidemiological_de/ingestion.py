@@ -142,6 +142,30 @@ def latest_file(source: str, filename: str, root: str | None = None) -> str | No
     return None
 
 
+def latest_files(source: str, root: str | None = None) -> dict[str, str]:
+    """
+    {arquivo: caminho da versão mais recente} de todos os arquivos já
+    ingeridos da fonte -- para fontes cujo conjunto de arquivos cresce
+    (ex.: um arquivo por ano no SIDRA).
+    """
+
+    found: dict[str, str] = {}
+
+    for ingestion_date in reversed(_snapshot_dates(source, root)):
+        directory = snapshot_dir(source, date.fromisoformat(ingestion_date), root)
+        fs, path = fsspec.core.url_to_fs(directory)
+        protocol = fs.protocol[0] if isinstance(fs.protocol, (list, tuple)) else fs.protocol
+        prefix = "" if protocol == "file" else f"{protocol}://"
+
+        for entry in fs.ls(path, detail=False):
+            filename = entry.rstrip("/").split("/")[-1]
+            if filename.endswith(MANIFEST_SUFFIX) or filename in found:
+                continue
+            found[filename] = f"{prefix}{entry}" if prefix else entry
+
+    return found
+
+
 def read_manifest(file_path: str) -> dict | None:
     fs, path = fsspec.core.url_to_fs(file_path + MANIFEST_SUFFIX)
     if not fs.exists(path):
@@ -202,6 +226,37 @@ def save_snapshot(
         json.dump(manifest, f, ensure_ascii=False, indent=2)
 
     return dest
+
+
+def bigquery_snapshot(
+    client,
+    sql: str,
+    *,
+    table: str,
+    source: str,
+    filename: str,
+    root: str | None = None,
+) -> str | None:
+    """
+    Resultado de uma consulta a um espelho no BigQuery (ex.: Base dos
+    Dados) gravado como snapshot CSV, com manifesto marcado como
+    espelho. Mesmo contrato de save_snapshot(): None se nada mudou.
+    """
+
+    df = client.query(sql).to_dataframe()
+    if df.empty:
+        raise RuntimeError(f"Consulta a {table} não trouxe linhas.")
+
+    written = save_snapshot(
+        df.to_csv(index=False).encode("utf-8"),
+        source=source,
+        filename=filename,
+        url=f"bigquery://{table}",
+        source_type="espelho",
+        root=root,
+    )
+    print(f"{filename}: {len(df)} linhas, {'sem mudança' if written is None else 'gravado'}")
+    return written
 
 
 def _remote_version(headers) -> dict:

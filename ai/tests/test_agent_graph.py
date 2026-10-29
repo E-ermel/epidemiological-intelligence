@@ -113,9 +113,9 @@ def test_agent_answers_total_cases_question_via_tool_call(monkeypatch):
     assert tool_message.content == "128"
 
 
-def test_agent_answers_model_metrics_question_via_tool_call(monkeypatch):
-    metrics = {"final": {"mae": 1.4, "rmse": 2.1}}
-    monkeypatch.setattr(llm_tools, "get_model_metrics", lambda disease: metrics)
+def test_agent_answers_alert_reliability_question_via_tool_call(monkeypatch):
+    info = {"model_version": "chronos2-clima-cross-v1", "test_metrics": {"uf": {"precision": 0.56}}}
+    monkeypatch.setattr(llm_tools.alert_queries, "model_info", lambda: info)
     monkeypatch.setattr(
         nodes,
         "llm_with_tools",
@@ -123,35 +123,36 @@ def test_agent_answers_model_metrics_question_via_tool_call(monkeypatch):
             [
                 AIMessage(
                     content="",
-                    tool_calls=[
-                        {
-                            "name": "model_metrics_tool",
-                            "args": {"disease": "ASMA"},
-                            "id": "call_1",
-                        }
-                    ],
+                    tool_calls=[{"name": "alert_model_info_tool", "args": {}, "id": "call_1"}],
                 ),
-                AIMessage(content="O MAE do modelo final de asma é 1.4."),
+                AIMessage(content="Na UF, 56 de cada 100 alertas foram surtos."),
             ]
         ),
     )
 
     result = agent_graph.invoke(
-        {"messages": [HumanMessage(content="Qual o MAE do modelo de asma?")]},
-        config=_thread_config("model-metrics"),
+        {"messages": [HumanMessage(content="O alerta é confiável?")]},
+        config=_thread_config("alert-model"),
     )
 
-    assert result["messages"][-1].content == "O MAE do modelo final de asma é 1.4."
+    assert result["messages"][-1].content == "Na UF, 56 de cada 100 alertas foram surtos."
     tool_message = result["messages"][-2]
-    assert tool_message.name == "model_metrics_tool"
-    assert "1.4" in tool_message.content
+    assert tool_message.name == "alert_model_info_tool"
+    assert "0.56" in tool_message.content
 
 
-def test_agent_answers_predictions_question_via_tool_call(monkeypatch):
+def test_agent_answers_outbreak_question_via_tool_call(monkeypatch):
     df = pd.DataFrame(
-        [{"municipality": "CANOAS", "observed": 5, "predicted": 4}]
+        [
+            {
+                "origin_type": "fechado", "origin_month": pd.Timestamp("2026-07-01"), "disease": "LEPTOSPIROSE",
+                "state": "RS", "municipality_name": None, "target_month": pd.Timestamp("2026-08-01"), "horizon": 1,
+                "probability": 0.64, "alert": True, "threshold": 40.0, "cases_p10": 30.0, "cases_p50": 45.0,
+                "cases_p90": 70.0, "observed_cases": None,
+            }
+        ]
     )
-    monkeypatch.setattr(llm_tools, "get_predictions", lambda disease: df)
+    monkeypatch.setattr(llm_tools.alert_queries, "latest_alerts", lambda filters, limit: df)
     monkeypatch.setattr(
         nodes,
         "llm_with_tools",
@@ -161,31 +162,26 @@ def test_agent_answers_predictions_question_via_tool_call(monkeypatch):
                     content="",
                     tool_calls=[
                         {
-                            "name": "model_predictions_tool",
-                            "args": {
-                                "disease": "ASMA",
-                                "municipality": "CANOAS",
-                            },
+                            "name": "outbreak_alerts_tool",
+                            "args": {"disease": "LEPTOSPIROSE", "state": "RS"},
                             "id": "call_1",
                         }
                     ],
                 ),
-                AIMessage(content="Para Canoas, previmos 4 casos frente a 5 observados."),
+                AIMessage(content="Há alerta de leptospirose no RS para agosto (64%)."),
             ]
         ),
     )
 
     result = agent_graph.invoke(
-        {"messages": [HumanMessage(content="Qual a previsão de asma para Canoas?")]},
-        config=_thread_config("predictions"),
+        {"messages": [HumanMessage(content="Tem surto de leptospirose previsto no RS?")]},
+        config=_thread_config("outbreak"),
     )
 
-    assert result["messages"][-1].content == (
-        "Para Canoas, previmos 4 casos frente a 5 observados."
-    )
+    assert result["messages"][-1].content == "Há alerta de leptospirose no RS para agosto (64%)."
     tool_message = result["messages"][-2]
-    assert tool_message.name == "model_predictions_tool"
-    assert "CANOAS" in tool_message.content
+    assert tool_message.name == "outbreak_alerts_tool"
+    assert "0.64" in tool_message.content
 
 
 def test_agent_routes_to_rag_tool_for_methodology_question(monkeypatch):

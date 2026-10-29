@@ -252,7 +252,7 @@ jobs:
       - name: Deploy Data Science Cloud Run Job
         if: ${{ inputs.component == 'data-science' || inputs.component == 'all' }}
         run: |
-          gcloud run jobs update epidemiological-ds-modeling \
+          gcloud run jobs update epidemiological-ds-alert \
             --project=${{ vars.GCP_PROJECT_ID }} \
             --region=${{ vars.GCP_REGION }} \
             --image=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DS_REPOSITORY }}/${{ env.DS_IMAGE }}:${{ github.sha }} \
@@ -294,6 +294,17 @@ jobs:
             inmet-ingest:southamerica-east1
             sih-ingest:southamerica-east1
             sih:${{ vars.GCP_REGION }}
+            sinan-ingest:southamerica-east1
+            sidra-ingest:southamerica-east1
+            sidra:${{ vars.GCP_REGION }}
+            atlas-ingest:${{ vars.GCP_REGION }}
+            atlas:${{ vars.GCP_REGION }}
+            mapbiomas-ingest:${{ vars.GCP_REGION }}
+            mapbiomas:${{ vars.GCP_REGION }}
+            prodes-ingest:southamerica-east1
+            prodes:${{ vars.GCP_REGION }}
+            snis-ingest:${{ vars.GCP_REGION }}
+            snis:${{ vars.GCP_REGION }}
         run: |
           for entry in $DE_JOBS; do
             job="${entry%%:*}"

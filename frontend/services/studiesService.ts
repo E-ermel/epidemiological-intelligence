@@ -15,7 +15,8 @@ export async function getStudies(): Promise<StudySummary[]> {
       description: DISEASE_DESCRIPTIONS[disease] ?? "",
       totalCases: study.totalCases,
       municipalityCount: study.municipalityCount,
-      activeModelVersion: study.activeModelVersion,
+      statesInAlert: study.statesInAlert,
+      maxAlertProbability: study.maxAlertProbability,
     };
   });
 }

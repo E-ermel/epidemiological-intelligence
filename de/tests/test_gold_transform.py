@@ -1,8 +1,10 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from epidemiological_de.gold import transform
 from epidemiological_de.inmet.transform import aggregate_station_monthly
+from epidemiological_de.snis.transform import GOLD_FEATURES as SANITATION_COLUMNS
 
 
 def _inmet_fixture():
@@ -35,8 +37,27 @@ def _station_map_fixture():
         {
             "station_code": ["A801", "B802", "C803", "D804"],
             "municipality_code_6": ["431490", "431490", "430460", None],
+            "latitude": [-30.05, -30.10, -29.92, -29.00],
+            "longitude": [-51.17, -51.20, -51.18, -50.00],
         }
     )
+
+
+# Porto Alegre e Canoas têm estação; Gravataí (~20 km) não; Uruguaiana
+# (~600 km) não tem nenhuma por perto; Boa Esperança do Norte não tem
+# centróide.
+DIM = pd.DataFrame(
+    {
+        "municipality_code": ["4314902", "4304606", "4309209", "4322400", "5101837"],
+        "municipality_code_6": ["431490", "430460", "430920", "432240", "510183"],
+        "municipality_name": ["Porto Alegre", "Canoas", "Gravataí", "Uruguaiana", "Boa Esperança do Norte"],
+        "municipality_name_normalized": ["PORTO ALEGRE", "CANOAS", "GRAVATAI", "URUGUAIANA", "BOA ESPERANCA DO NORTE"],
+        "state": ["RS", "RS", "RS", "RS", "MT"],
+        "region": ["S", "S", "S", "S", "CO"],
+        "latitude": [-30.03, -29.92, -29.94, -29.75, None],
+        "longitude": [-51.23, -51.18, -50.99, -57.09, None],
+    }
+)
 
 
 def test_aggregate_station_monthly_sums_and_averages_per_station():
@@ -71,14 +92,9 @@ def test_attach_municipality_drops_stations_without_municipality():
     assert set(attached["municipality_code_6"]) == {"431490", "430460"}
 
 
-def _climate_monthly_fixture():
-    station_monthly = aggregate_station_monthly(_inmet_fixture())
-    attached = transform.attach_municipality(station_monthly, _station_map_fixture())
-    return transform.aggregate_municipality_monthly(attached)
-
-
 def test_aggregate_municipality_monthly_averages_across_stations_and_counts_them():
-    grouped = _climate_monthly_fixture()
+    attached = transform.attach_municipality(aggregate_station_monthly(_inmet_fixture()), _station_map_fixture())
+    grouped = transform.aggregate_municipality_monthly(attached)
 
     porto_alegre = grouped[grouped["municipality_code"] == "431490"].iloc[0]
     assert porto_alegre["station_count"] == 2
@@ -88,73 +104,183 @@ def test_aggregate_municipality_monthly_averages_across_stations_and_counts_them
     assert canoas["station_count"] == 1
 
 
-def _sinan_fixture():
-    return pd.DataFrame(
-        {
-            "municipality_code": ["431490", "431490", "430460", "999999"],
-            "municipality": ["PORTO ALEGRE", "PORTO ALEGRE", "CANOAS", "SEM CLIMA"],
-            "year": [2023, 2023, 2023, 2023],
-            "month": [1, 2, 1, 1],
-            "reference_date": pd.to_datetime(
-                ["2023-01-01", "2023-02-01", "2023-01-01", "2023-01-01"]
-            ),
-            "cases": [10, 5, 3, 1],
-            "disease": ["ASMA", "ASMA", "ASMA", "ASMA"],
-        }
+# ---------------------------------------------------------------------
+# Clima por município (estação própria ou mais próxima)
+# ---------------------------------------------------------------------
+
+
+def test_haversine_matrix_matches_known_distance():
+    # Porto Alegre -> Uruguaiana: ~570 km em linha reta.
+    distance = transform.haversine_matrix_km([-30.03], [-51.23], [-29.75], [-57.09])[0, 0]
+
+    assert distance == pytest.approx(566, abs=10)
+
+
+def _climate():
+    return transform.municipality_climate(
+        aggregate_station_monthly(_inmet_fixture()), _station_map_fixture(), DIM, max_distance_km=100
+    ).set_index("municipality_code")
+
+
+def test_municipality_with_station_uses_its_own():
+    climate = _climate()
+
+    assert climate.loc["431490", "climate_source"] == transform.OWN_STATION
+    assert climate.loc["431490", "climate_distance_km"] == 0
+    assert climate.loc["431490", "temperature_avg_c"] == 21.0
+
+
+def test_municipality_without_station_borrows_the_nearest_with_data():
+    climate = _climate()
+
+    gravatai = climate.loc["430920"]
+    assert gravatai["climate_source"] == transform.NEAREST_STATION
+    # C803 (Canoas) é a mais próxima de Gravataí.
+    assert gravatai["temperature_avg_c"] == 18.0
+    assert 0 < gravatai["climate_distance_km"] < 30
+
+
+def test_no_climate_beyond_max_distance_or_without_centroid():
+    climate = _climate()
+
+    assert "432240" not in climate.index  # Uruguaiana
+    assert "510183" not in climate.index  # sem centróide
+
+
+def test_nearest_skips_station_without_data_that_month():
+    monthly = aggregate_station_monthly(_inmet_fixture())
+    monthly.loc[monthly["station_code"] == "C803", transform.CLIMATE_COLUMNS] = np.nan
+
+    climate = transform.municipality_climate(monthly, _station_map_fixture(), DIM, 100).set_index("municipality_code")
+
+    # Sem C803 no mês: Canoas e Gravataí pegam a estação seguinte (Porto Alegre).
+    assert climate.loc["430460", "climate_source"] == transform.NEAREST_STATION
+    assert climate.loc["430920", "temperature_avg_c"] in (21.0, 22.0, 20.0)
+
+
+# ---------------------------------------------------------------------
+# Casos e gold
+# ---------------------------------------------------------------------
+
+
+SILVER = pd.DataFrame(
+    {
+        "disease": ["ASMA", "ASMA", "ASMA", "ASMA"],
+        # Residente de Gravataí internado em Porto Alegre; um de Porto
+        # Alegre lá mesmo; um código ignorado (430000).
+        "residence_municipality_code": ["430920", "431490", "430000", "431490"],
+        "occurrence_municipality_code": ["431490", "431490", "431490", "431490"],
+        "year": [2023, 2023, 2023, 2023],
+        "month": [1, 1, 1, 2],
+        "hospitalizations": [3, 5, 1, 2],
+        "is_provisional": [False, False, False, True],
+    }
+)
+
+
+def test_case_counts_by_residence_and_by_occurrence():
+    counts = transform.case_counts(SILVER, "hospitalizations").set_index(["municipality_code", "month"])
+
+    assert counts.loc[("431490", 1), "cases"] == 5
+    assert counts.loc[("431490", 1), "cases_by_occurrence"] == 9
+    assert counts.loc[("430920", 1), "cases"] == 3
+    assert pd.isna(counts.loc[("430920", 1), "cases_by_occurrence"])
+
+
+def test_month_range_goes_from_first_year_to_last_month_with_data():
+    months = transform.month_range(SILVER, first_year=2022)
+
+    assert len(months) == 14
+    assert months.iloc[-1].tolist() == [2023, 2]
+
+
+POPULATION = pd.DataFrame(
+    {
+        "municipality_code_6": ["431490", "430920"],
+        "year": [2023, 2023],
+        "population": [1_332_570, 265_070],
+        "population_density": [2690.0, 568.0],
+    }
+)
+
+
+LAND_COVER = pd.DataFrame(
+    {"municipality_code_6": ["431490"], "year": [2023], **{column: [10.0] for column in transform.LAND_COVER_COLUMNS}}
+).assign(land_urban_pct=38.5)
+
+DEFORESTATION = pd.DataFrame(
+    {"municipality_code_6": ["431490"], "year": [2023], "deforestation_km2": [0.1], "deforestation_pct": [0.02]}
+)
+
+SANITATION = pd.DataFrame(
+    {"municipality_code_6": ["431490"], "year": [2023], **{column: [90.0] for column in SANITATION_COLUMNS}}
+)
+
+ATLAS = pd.DataFrame(
+    {"municipality_code_6": ["431490"], **{column: [0.5] for column in transform.ATLAS_COLUMNS}}
+).assign(atlas_idhm=0.805)
+
+
+def _gold():
+    return transform.build_disease_gold(
+        "ASMA",
+        "SIH",
+        transform.case_counts(SILVER, "hospitalizations"),
+        transform.month_range(SILVER, first_year=2023),
+        transform.provisional_months(SILVER),
+        DIM,
+        transform.municipality_climate(aggregate_station_monthly(_inmet_fixture()), _station_map_fixture(), DIM, 100),
+        [POPULATION, LAND_COVER, DEFORESTATION, SANITATION],
+        [ATLAS],
     )
 
 
-def test_join_gold_preserves_sinan_row_count():
-    sinan_df = _sinan_fixture()
-    gold_df = transform.join_gold(sinan_df, _climate_monthly_fixture())
+def test_gold_has_one_row_per_municipality_and_month_with_explicit_zeros():
+    gold = _gold()
 
-    assert len(gold_df) == len(sinan_df)
+    assert list(gold.columns) == transform.GOLD_COLUMNS
+    assert len(gold) == len(DIM) * 2
+    assert not gold.duplicated(["municipality_code", "year", "month"]).any()
 
-
-def test_join_gold_keeps_epidemiological_record_without_climate_match():
-    gold_df = transform.join_gold(_sinan_fixture(), _climate_monthly_fixture())
-
-    missing_climate_row = gold_df[gold_df["municipality"] == "SEM CLIMA"]
-    assert len(missing_climate_row) == 1
-    assert pd.isna(missing_climate_row.iloc[0]["precipitation_sum_mm"])
-    assert missing_climate_row.iloc[0]["cases"] == 1
+    canoas = gold[(gold["municipality_code"] == "430460") & (gold["month"] == 1)].iloc[0]
+    assert canoas["cases"] == 0
+    assert canoas["cases_by_occurrence"] == 0
 
 
-def test_join_gold_attaches_matching_climate_values():
-    gold_df = transform.join_gold(_sinan_fixture(), _climate_monthly_fixture())
+def test_gold_carries_names_codes_flags_and_climate():
+    gold = _gold().set_index(["municipality_code", "month"])
 
-    jan_porto_alegre = gold_df[
-        (gold_df["municipality"] == "PORTO ALEGRE") & (gold_df["month"] == 1)
-    ].iloc[0]
-    assert jan_porto_alegre["temperature_avg_c"] == 21.0
+    gravatai = gold.loc[("430920", 1)]
+    assert gravatai["ibge_code"] == "4309209"
+    assert gravatai["municipality"] == "GRAVATAI"
+    assert gravatai["municipality_name"] == "Gravataí"
+    assert gravatai["cases"] == 3
+    assert gravatai["climate_source"] == transform.NEAREST_STATION
+
+    assert gravatai["population"] == 265_070
+    assert gravatai["population_density"] == 568.0
+    # Sem população publicada para Canoas no fixture: nulo, não zero.
+    assert pd.isna(gold.loc[("430460", 1), "population"])
+
+    # IDHM fixo (censo 2010) repetido em todos os meses do município.
+    assert gold.loc[("431490", 1), "atlas_idhm"] == 0.805
+    assert gold.loc[("431490", 2), "atlas_idhm"] == 0.805
+    assert pd.isna(gravatai["atlas_idhm"])
+
+    assert gold.loc[("431490", 2), "land_urban_pct"] == 38.5
+    assert pd.isna(gravatai["land_urban_pct"])
+
+    assert gold.loc[("431490", 1), "deforestation_km2"] == 0.1
+    assert pd.isna(gravatai["deforestation_km2"])
+    assert gold.loc[("431490", 1), "snis_sewage_coverage_pct"] == 90.0
+
+    assert bool(gold.loc[("431490", 2), "is_provisional"]) is True
+    assert bool(gold.loc[("431490", 1), "is_provisional"]) is False
+    assert gold.loc[("431490", 1), "reference_date"] == pd.Timestamp("2023-01-01", tz="UTC")
 
 
-def test_join_gold_matches_by_code_not_by_name():
-    # Mesmo nome, outro código (homônimo de outra UF): não pode receber
-    # o clima de Porto Alegre.
-    sinan_df = _sinan_fixture()
-    sinan_df.loc[3, ["municipality_code", "municipality"]] = ["999999", "PORTO ALEGRE"]
+def test_gold_drops_unknown_municipality_codes():
+    gold = _gold()
 
-    gold_df = transform.join_gold(sinan_df, _climate_monthly_fixture())
-
-    homonym = gold_df[gold_df["municipality_code"] == "999999"].iloc[0]
-    assert pd.isna(homonym["temperature_avg_c"])
-
-
-def test_build_gold_has_no_duplicate_disease_municipality_year_month_keys():
-    station_monthly = aggregate_station_monthly(_inmet_fixture())
-    gold_df = transform.build_gold(station_monthly, _station_map_fixture(), _sinan_fixture())
-
-    duplicate_counts = gold_df.groupby(
-        ["disease", "municipality_code", "year", "month"]
-    ).size()
-    assert (duplicate_counts <= 1).all()
-
-
-def test_build_gold_preserves_sinan_cardinality_end_to_end():
-    sinan_df = _sinan_fixture()
-    station_monthly = aggregate_station_monthly(_inmet_fixture())
-
-    gold_df = transform.build_gold(station_monthly, _station_map_fixture(), sinan_df)
-
-    assert len(gold_df) == len(sinan_df)
+    assert "430000" not in set(gold["municipality_code"])
+    assert gold["cases"].sum() == 3 + 5 + 2

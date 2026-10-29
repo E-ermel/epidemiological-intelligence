@@ -29,3 +29,7 @@ ai/chroma_db/*
 # Cleanup staging (moved out of the project by hand)
 backup-cache/
 chroma_db
+
+# Dados e previsões do benchmark de modelos (gerados localmente)
+data_science/benchmarks/output/
+data_science/study/output/
