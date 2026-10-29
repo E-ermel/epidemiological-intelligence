@@ -46,6 +46,30 @@ main:
                         name: ${sinan_ingest_job}
                         connector_params:
                           timeout: 7200
+            - sidra_ingest:
+                steps:
+                  - run_sidra_ingest:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${sidra_ingest_job}
+                        connector_params:
+                          timeout: 7200
+            - atlas_ingest:
+                steps:
+                  - run_atlas_ingest:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${atlas_ingest_job}
+                        connector_params:
+                          timeout: 7200
+            - mapbiomas_ingest:
+                steps:
+                  - run_mapbiomas_ingest:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${mapbiomas_ingest_job}
+                        connector_params:
+                          timeout: 7200
 
     - dim_municipality:
         call: googleapis.run.v2.projects.locations.jobs.run
@@ -79,6 +103,31 @@ main:
                       call: googleapis.run.v2.projects.locations.jobs.run
                       args:
                         name: ${sinan_job}
+                        connector_params:
+                          timeout: 7200
+            # População: usa a área da dim_municipality (passo anterior).
+            - sidra:
+                steps:
+                  - run_sidra:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${sidra_job}
+                        connector_params:
+                          timeout: 7200
+            - atlas:
+                steps:
+                  - run_atlas:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${atlas_job}
+                        connector_params:
+                          timeout: 7200
+            - mapbiomas:
+                steps:
+                  - run_mapbiomas:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${mapbiomas_job}
                         connector_params:
                           timeout: 7200
 

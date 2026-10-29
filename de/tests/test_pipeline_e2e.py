@@ -7,6 +7,8 @@ nem BigQuery.
 import pandas as pd
 
 from epidemiological_de import config
+from epidemiological_de.atlas.transform import GOLD_FEATURES as ATLAS_FEATURES
+from epidemiological_de.mapbiomas.transform import GOLD_FEATURES as LAND_COVER_FEATURES
 from epidemiological_de.gold import pipeline as gold_pipeline
 from epidemiological_de.inmet import pipeline as inmet_pipeline
 from epidemiological_de.inmet.transform import aggregate_station_monthly
@@ -78,9 +80,35 @@ SINAN = pd.DataFrame(
 )
 
 
+POPULATION = pd.DataFrame(
+    {
+        "municipality_code_6": ["431490", "430920"],
+        "year": [2015, 2015],
+        "population": [1_476_867, 265_070],
+        "population_density": [2981.0, 568.0],
+    }
+)
+
+
+ATLAS = pd.DataFrame(
+    {
+        "municipality_code": ["4314902"],
+        "municipality_code_6": ["431490"],
+        "census_year": [2010],
+        **{feature: [0.5] for feature in ATLAS_FEATURES},
+    }
+)
+
+
+LAND_COVER = pd.DataFrame(
+    {"municipality_code_6": ["431490"], "year": [2015], **{column: [10.0] for column in LAND_COVER_FEATURES}}
+)
+
+
 def _run(tmp_path):
     paths = {}
     for name, df in {"dim": DIM, "stations": STATIONS, "station_monthly": _station_monthly(tmp_path),
+                     "population": POPULATION, "atlas": ATLAS, "land_cover": LAND_COVER,
                      "SIH": SIH, "SINAN": SINAN}.items():
         path = tmp_path / "silver" / f"{name}.parquet"
         path.parent.mkdir(exist_ok=True)

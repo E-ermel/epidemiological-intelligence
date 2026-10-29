@@ -119,6 +119,50 @@ SINAN_FIRST_YEAR = int(os.getenv("SINAN_FIRST_YEAR", "2015"))
 # Casos por doença × residência × local do evento × mês.
 SINAN_SILVER_PATH = f"gs://{BUCKET}/silver/sinan_cases/"
 
+# --- SIDRA/IBGE (população) ----------------------------------------
+
+SIDRA_SOURCE = "sidra"
+
+SIDRA_API = "https://apisidra.ibge.gov.br/values"
+
+# Estimativas anuais de população por município (tabela 6579, variável
+# 9324). A API limita 50 mil valores por consulta: um ano por vez.
+SIDRA_ESTIMATES_URL = f"{SIDRA_API}/t/6579/n6/all/v/9324/p/{{year}}"
+# Mesma tabela no nível Brasil: só para descobrir quais anos existem.
+SIDRA_ESTIMATE_YEARS_URL = f"{SIDRA_API}/t/6579/n1/all/v/9324/p/all"
+
+# População residente do Censo 2022 (tabela 4709, variável 93): não há
+# estimativa para 2022, e o censo é a contagem de referência.
+SIDRA_CENSUS_2022_URL = f"{SIDRA_API}/t/4709/n6/all/v/93/p/2022"
+
+SIDRA_FIRST_YEAR = 2015
+
+# População e densidade por município × ano.
+POPULATION_SILVER_PATH = f"gs://{BUCKET}/silver/sidra_population/"
+
+# --- Atlas Brasil (IDHM), via Base dos Dados -----------------------
+
+ATLAS_SOURCE = "atlas"
+
+# Cópia pública do Atlas do Desenvolvimento Humano (PNUD/IPEA/FJP) no
+# BigQuery da Base dos Dados (🔵 espelho): o site do Atlas não oferece
+# download automatizável. Censos de 1991, 2000 e 2010.
+ATLAS_BIGQUERY_TABLE = "basedosdados.mundo_onu_adh.municipio"
+
+ATLAS_SILVER_PATH = f"gs://{BUCKET}/silver/atlas_idhm/"
+
+# --- MapBiomas (uso e cobertura da terra), via Base dos Dados ------
+
+MAPBIOMAS_SOURCE = "mapbiomas"
+
+# 🟠 rede MapBiomas (não oficial), pela cópia da Base dos Dados (🔵): o
+# site troca a URL da planilha a cada coleção.
+MAPBIOMAS_BIGQUERY_TABLE = "basedosdados.br_mapbiomas_estatisticas.cobertura_municipio_classe"
+
+MAPBIOMAS_FIRST_YEAR = 2015
+
+LAND_COVER_SILVER_PATH = f"gs://{BUCKET}/silver/mapbiomas_land_cover/"
+
 # --- Gold ----------------------------------------------------------
 
 # Um parquet por doença (part-NN.parquet); o BigQuery carrega a pasta.

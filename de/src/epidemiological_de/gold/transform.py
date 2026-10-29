@@ -14,6 +14,14 @@ Gold nacional: município × mês × doença, com clima.
 import numpy as np
 import pandas as pd
 
+from epidemiological_de.atlas.transform import GOLD_FEATURES as ATLAS_FEATURES
+from epidemiological_de.mapbiomas.transform import GOLD_FEATURES as LAND_COVER_COLUMNS
+
+# Características fixas do município (censo 2010, Atlas Brasil).
+ATLAS_COLUMNS = [f"atlas_{feature}" for feature in ATLAS_FEATURES]
+
+POPULATION_COLUMNS = ["population", "population_density"]
+
 CLIMATE_COLUMNS = [
     "precipitation_sum_mm",
     "precipitation_avg_observation_mm",
@@ -41,6 +49,9 @@ GOLD_COLUMNS = [
     "cases",
     "cases_by_occurrence",
     "is_provisional",
+    *POPULATION_COLUMNS,
+    *LAND_COVER_COLUMNS,
+    *ATLAS_COLUMNS,
     *CLIMATE_COLUMNS,
     "station_count",
     "climate_source",
@@ -238,10 +249,20 @@ def build_disease_gold(
     provisional: pd.DataFrame,
     dim: pd.DataFrame,
     climate: pd.DataFrame,
+    yearly_features: list[pd.DataFrame],
+    static_features: list[pd.DataFrame],
 ) -> pd.DataFrame:
     """
     Grade município × mês de uma doença. Casos de códigos que não estão
     na dim_municipality (ignorado, "999999"...) ficam de fora.
+
+    - `yearly_features`: tabelas com municipality_code_6, year e as
+      colunas da característica (população, uso do solo...); o valor do
+      ano se repete nos 12 meses.
+    - `static_features`: tabelas com municipality_code_6 e as colunas
+      (IDHM do censo 2010...); o mesmo valor em todos os meses.
+
+    Município ou ano sem valor na característica fica nulo, não zero.
     """
 
     municipalities = dim[["municipality_code_6", "municipality_code", "municipality_name_normalized",
@@ -261,6 +282,22 @@ def build_disease_gold(
 
     gold = gold.merge(provisional, on=["year", "month"], how="left")
     gold["is_provisional"] = gold["is_provisional"].fillna(False).astype(bool)
+
+    for features in yearly_features:
+        gold = gold.merge(
+            features.rename(columns={"municipality_code_6": "municipality_code"}),
+            on=["municipality_code", "year"],
+            how="left",
+            validate="many_to_one",
+        )
+
+    for features in static_features:
+        gold = gold.merge(
+            features.rename(columns={"municipality_code_6": "municipality_code"}),
+            on="municipality_code",
+            how="left",
+            validate="many_to_one",
+        )
 
     gold = gold.merge(climate, on=KEYS, how="left", validate="many_to_one")
     gold["station_count"] = gold["station_count"].fillna(0).astype("int64")

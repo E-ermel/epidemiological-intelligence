@@ -11,6 +11,7 @@ import fsspec
 import pandas as pd
 
 from epidemiological_de import config, storage, warehouse
+from epidemiological_de.atlas.transform import latest_census
 from epidemiological_de.gold import transform
 
 # (fonte, silver, coluna de contagem)
@@ -49,6 +50,9 @@ def run(
         "dim": config.DIM_MUNICIPALITY_SILVER_PATH,
         "station_monthly": config.INMET_STATION_MONTHLY_SILVER_PATH,
         "stations": config.INMET_STATIONS_SILVER_PATH,
+        "population": config.POPULATION_SILVER_PATH,
+        "atlas": config.ATLAS_SILVER_PATH,
+        "land_cover": config.LAND_COVER_SILVER_PATH,
         **{source: path for source, path, _ in SOURCES},
         **(silver_paths or {}),
     }
@@ -67,6 +71,12 @@ def run(
         )
 
     climate = transform.municipality_climate(station_monthly, station_map, dim, config.CLIMATE_MAX_DISTANCE_KM)
+    keys = ["municipality_code_6", "year"]
+    yearly_features = [
+        pd.read_parquet(paths["population"], columns=[*keys, *transform.POPULATION_COLUMNS]),
+        pd.read_parquet(paths["land_cover"], columns=[*keys, *transform.LAND_COVER_COLUMNS]),
+    ]
+    static_features = [latest_census(pd.read_parquet(paths["atlas"]))]
 
     storage.clear_path(gold_path)
     total_rows, part = 0, 0
@@ -82,7 +92,9 @@ def run(
             report_climate(climate, dim, len(months))
 
         for disease in sorted(silver["disease"].unique()):
-            gold = transform.build_disease_gold(disease, source, counts, months, provisional, dim, climate)
+            gold = transform.build_disease_gold(
+                disease, source, counts, months, provisional, dim, climate, yearly_features, static_features
+            )
 
             with fsspec.open(f"{gold_path}/part-{part:02d}.parquet", "wb", auto_mkdir=True) as f:
                 gold.to_parquet(f, index=False)

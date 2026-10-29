@@ -144,6 +144,39 @@ locals {
       region = var.ingest_region
     }
 
+    sidra-ingest = {
+      module = "epidemiological_de.sidra.ingest"
+      region = var.ingest_region
+    }
+
+    sidra = {
+      module = "epidemiological_de.sidra.pipeline"
+      region = var.region
+    }
+
+    # Consulta a cópia do Atlas na Base dos Dados (BigQuery): sem
+    # bloqueio geográfico, roda junto do resto.
+    atlas-ingest = {
+      module = "epidemiological_de.atlas.ingest"
+      region = var.region
+    }
+
+    atlas = {
+      module = "epidemiological_de.atlas.pipeline"
+      region = var.region
+    }
+
+    # Cópia do MapBiomas na Base dos Dados (BigQuery), como o Atlas.
+    mapbiomas-ingest = {
+      module = "epidemiological_de.mapbiomas.ingest"
+      region = var.region
+    }
+
+    mapbiomas = {
+      module = "epidemiological_de.mapbiomas.pipeline"
+      region = var.region
+    }
+
     # Silver do SIH: uma task por UF, lendo o bronze no GCS.
     sih = {
       module     = "epidemiological_de.sih.pipeline"

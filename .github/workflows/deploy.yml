@@ -295,6 +295,12 @@ jobs:
             sih-ingest:southamerica-east1
             sih:${{ vars.GCP_REGION }}
             sinan-ingest:southamerica-east1
+            sidra-ingest:southamerica-east1
+            sidra:${{ vars.GCP_REGION }}
+            atlas-ingest:${{ vars.GCP_REGION }}
+            atlas:${{ vars.GCP_REGION }}
+            mapbiomas-ingest:${{ vars.GCP_REGION }}
+            mapbiomas:${{ vars.GCP_REGION }}
         run: |
           for entry in $DE_JOBS; do
             job="${entry%%:*}"

@@ -193,6 +193,25 @@ def test_month_range_goes_from_first_year_to_last_month_with_data():
     assert months.iloc[-1].tolist() == [2023, 2]
 
 
+POPULATION = pd.DataFrame(
+    {
+        "municipality_code_6": ["431490", "430920"],
+        "year": [2023, 2023],
+        "population": [1_332_570, 265_070],
+        "population_density": [2690.0, 568.0],
+    }
+)
+
+
+LAND_COVER = pd.DataFrame(
+    {"municipality_code_6": ["431490"], "year": [2023], **{column: [10.0] for column in transform.LAND_COVER_COLUMNS}}
+).assign(land_urban_pct=38.5)
+
+ATLAS = pd.DataFrame(
+    {"municipality_code_6": ["431490"], **{column: [0.5] for column in transform.ATLAS_COLUMNS}}
+).assign(atlas_idhm=0.805)
+
+
 def _gold():
     return transform.build_disease_gold(
         "ASMA",
@@ -202,6 +221,8 @@ def _gold():
         transform.provisional_months(SILVER),
         DIM,
         transform.municipality_climate(aggregate_station_monthly(_inmet_fixture()), _station_map_fixture(), DIM, 100),
+        [POPULATION, LAND_COVER],
+        [ATLAS],
     )
 
 
@@ -226,6 +247,19 @@ def test_gold_carries_names_codes_flags_and_climate():
     assert gravatai["municipality_name"] == "Gravataí"
     assert gravatai["cases"] == 3
     assert gravatai["climate_source"] == transform.NEAREST_STATION
+
+    assert gravatai["population"] == 265_070
+    assert gravatai["population_density"] == 568.0
+    # Sem população publicada para Canoas no fixture: nulo, não zero.
+    assert pd.isna(gold.loc[("430460", 1), "population"])
+
+    # IDHM fixo (censo 2010) repetido em todos os meses do município.
+    assert gold.loc[("431490", 1), "atlas_idhm"] == 0.805
+    assert gold.loc[("431490", 2), "atlas_idhm"] == 0.805
+    assert pd.isna(gravatai["atlas_idhm"])
+
+    assert gold.loc[("431490", 2), "land_urban_pct"] == 38.5
+    assert pd.isna(gravatai["land_urban_pct"])
 
     assert bool(gold.loc[("431490", 2), "is_provisional"]) is True
     assert bool(gold.loc[("431490", 1), "is_provisional"]) is False
