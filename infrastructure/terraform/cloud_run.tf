@@ -189,6 +189,17 @@ locals {
       region = var.region
     }
 
+    # Cópia do SNIS na Base dos Dados (BigQuery), como o Atlas.
+    snis-ingest = {
+      module = "epidemiological_de.snis.ingest"
+      region = var.region
+    }
+
+    snis = {
+      module = "epidemiological_de.snis.pipeline"
+      region = var.region
+    }
+
     # Silver do SIH: uma task por UF, lendo o bronze no GCS.
     sih = {
       module     = "epidemiological_de.sih.pipeline"

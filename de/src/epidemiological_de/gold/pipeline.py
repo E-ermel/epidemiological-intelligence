@@ -54,6 +54,7 @@ def run(
         "atlas": config.ATLAS_SILVER_PATH,
         "land_cover": config.LAND_COVER_SILVER_PATH,
         "deforestation": config.DEFORESTATION_SILVER_PATH,
+        "sanitation": config.SANITATION_SILVER_PATH,
         **{source: path for source, path, _ in SOURCES},
         **(silver_paths or {}),
     }
@@ -77,6 +78,7 @@ def run(
         pd.read_parquet(paths["population"], columns=[*keys, *transform.POPULATION_COLUMNS]),
         pd.read_parquet(paths["land_cover"], columns=[*keys, *transform.LAND_COVER_COLUMNS]),
         pd.read_parquet(paths["deforestation"], columns=[*keys, *transform.DEFORESTATION_COLUMNS]),
+        pd.read_parquet(paths["sanitation"], columns=[*keys, *transform.SANITATION_COLUMNS]),
     ]
     static_features = [latest_census(pd.read_parquet(paths["atlas"]))]
 

@@ -303,6 +303,8 @@ jobs:
             mapbiomas:${{ vars.GCP_REGION }}
             prodes-ingest:southamerica-east1
             prodes:${{ vars.GCP_REGION }}
+            snis-ingest:${{ vars.GCP_REGION }}
+            snis:${{ vars.GCP_REGION }}
         run: |
           for entry in $DE_JOBS; do
             job="${entry%%:*}"

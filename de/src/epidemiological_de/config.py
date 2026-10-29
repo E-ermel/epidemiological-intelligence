@@ -178,6 +178,23 @@ PRODES_FIRST_YEAR = 2015
 
 DEFORESTATION_SILVER_PATH = f"gs://{BUCKET}/silver/prodes_deforestation/"
 
+# --- SNIS (saneamento), via Base dos Dados -------------------------
+
+SNIS_SOURCE = "snis"
+
+# 🟢 Ministério das Cidades, pela cópia da Base dos Dados (🔵): o SNIS
+# não tem API. Vai até o ano de referência 2022; o SINISA (2023+)
+# substitui o SNIS e entra depois, por upload manual.
+SNIS_BIGQUERY_TABLE = "basedosdados.br_mdr_snis.municipio_agua_esgoto"
+
+SNIS_FIRST_YEAR = 2015
+
+# Quantos anos o último dado do município é repetido para a frente
+# (anos em que não respondeu ao SNIS e os anos após 2022).
+SNIS_MAX_CARRY_YEARS = 4
+
+SANITATION_SILVER_PATH = f"gs://{BUCKET}/silver/snis_sanitation/"
+
 # --- Gold ----------------------------------------------------------
 
 # Um parquet por doença (part-NN.parquet); o BigQuery carrega a pasta.

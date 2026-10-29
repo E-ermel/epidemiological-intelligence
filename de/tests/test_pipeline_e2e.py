@@ -12,6 +12,7 @@ from epidemiological_de.mapbiomas.transform import GOLD_FEATURES as LAND_COVER_F
 from epidemiological_de.gold import pipeline as gold_pipeline
 from epidemiological_de.inmet import pipeline as inmet_pipeline
 from epidemiological_de.inmet.transform import aggregate_station_monthly
+from epidemiological_de.snis.transform import GOLD_FEATURES as SANITATION_COLUMNS
 
 
 INMET_HEADER_PORTO_ALEGRE = (
@@ -108,12 +109,16 @@ DEFORESTATION = pd.DataFrame(
     {"municipality_code_6": ["431490"], "year": [2015], "deforestation_km2": [0.1], "deforestation_pct": [0.02]}
 )
 
+SANITATION = pd.DataFrame(
+    {"municipality_code_6": ["431490"], "year": [2015], **{column: [90.0] for column in SANITATION_COLUMNS}}
+)
+
 
 def _run(tmp_path):
     paths = {}
     for name, df in {"dim": DIM, "stations": STATIONS, "station_monthly": _station_monthly(tmp_path),
                      "population": POPULATION, "atlas": ATLAS, "land_cover": LAND_COVER,
-                     "deforestation": DEFORESTATION,
+                     "deforestation": DEFORESTATION, "sanitation": SANITATION,
                      "SIH": SIH, "SINAN": SINAN}.items():
         path = tmp_path / "silver" / f"{name}.parquet"
         path.parent.mkdir(exist_ok=True)

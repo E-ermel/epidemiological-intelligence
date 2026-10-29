@@ -29,6 +29,8 @@ locals {
     mapbiomas        = google_cloud_run_v2_job.de["mapbiomas"]
     prodes_ingest    = google_cloud_run_v2_job.de["prodes-ingest"]
     prodes           = google_cloud_run_v2_job.de["prodes"]
+    snis_ingest      = google_cloud_run_v2_job.de["snis-ingest"]
+    snis             = google_cloud_run_v2_job.de["snis"]
     ibge             = google_cloud_run_v2_job.de["ibge"]
     inmet            = google_cloud_run_v2_job.de["inmet"]
     sih              = google_cloud_run_v2_job.de["sih"]
@@ -55,7 +57,7 @@ resource "google_workflows_workflow" "pipeline" {
   project         = var.project_id
   name            = "epidemiological-pipeline"
   region          = var.region
-  description     = "ingestao (ibge, inmet, sih, sinan, sidra, atlas, mapbiomas, prodes) -> ibge -> silver de cada fonte -> gold nacional (+ BigQuery)"
+  description     = "ingestao (ibge, inmet, sih, sinan, sidra, atlas, mapbiomas, prodes, snis) -> ibge -> silver de cada fonte -> gold nacional (+ BigQuery)"
   service_account = google_service_account.pipeline_workflow.id
 
   # job.id = "projects/<p>/locations/<r>/jobs/<nome>", o formato que o

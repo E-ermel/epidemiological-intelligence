@@ -4,6 +4,7 @@ import pytest
 
 from epidemiological_de.gold import transform
 from epidemiological_de.inmet.transform import aggregate_station_monthly
+from epidemiological_de.snis.transform import GOLD_FEATURES as SANITATION_COLUMNS
 
 
 def _inmet_fixture():
@@ -211,6 +212,10 @@ DEFORESTATION = pd.DataFrame(
     {"municipality_code_6": ["431490"], "year": [2023], "deforestation_km2": [0.1], "deforestation_pct": [0.02]}
 )
 
+SANITATION = pd.DataFrame(
+    {"municipality_code_6": ["431490"], "year": [2023], **{column: [90.0] for column in SANITATION_COLUMNS}}
+)
+
 ATLAS = pd.DataFrame(
     {"municipality_code_6": ["431490"], **{column: [0.5] for column in transform.ATLAS_COLUMNS}}
 ).assign(atlas_idhm=0.805)
@@ -225,7 +230,7 @@ def _gold():
         transform.provisional_months(SILVER),
         DIM,
         transform.municipality_climate(aggregate_station_monthly(_inmet_fixture()), _station_map_fixture(), DIM, 100),
-        [POPULATION, LAND_COVER, DEFORESTATION],
+        [POPULATION, LAND_COVER, DEFORESTATION, SANITATION],
         [ATLAS],
     )
 
@@ -267,6 +272,7 @@ def test_gold_carries_names_codes_flags_and_climate():
 
     assert gold.loc[("431490", 1), "deforestation_km2"] == 0.1
     assert pd.isna(gravatai["deforestation_km2"])
+    assert gold.loc[("431490", 1), "snis_sewage_coverage_pct"] == 90.0
 
     assert bool(gold.loc[("431490", 2), "is_provisional"]) is True
     assert bool(gold.loc[("431490", 1), "is_provisional"]) is False

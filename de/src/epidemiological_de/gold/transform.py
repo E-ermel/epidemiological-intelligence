@@ -17,6 +17,7 @@ import pandas as pd
 from epidemiological_de.atlas.transform import GOLD_FEATURES as ATLAS_FEATURES
 from epidemiological_de.mapbiomas.transform import GOLD_FEATURES as LAND_COVER_COLUMNS
 from epidemiological_de.prodes.transform import GOLD_FEATURES as DEFORESTATION_COLUMNS
+from epidemiological_de.snis.transform import GOLD_FEATURES as SANITATION_COLUMNS
 
 # Características fixas do município (censo 2010, Atlas Brasil).
 ATLAS_COLUMNS = [f"atlas_{feature}" for feature in ATLAS_FEATURES]
@@ -53,6 +54,7 @@ GOLD_COLUMNS = [
     *POPULATION_COLUMNS,
     *LAND_COVER_COLUMNS,
     *DEFORESTATION_COLUMNS,
+    *SANITATION_COLUMNS,
     *ATLAS_COLUMNS,
     *CLIMATE_COLUMNS,
     "station_count",

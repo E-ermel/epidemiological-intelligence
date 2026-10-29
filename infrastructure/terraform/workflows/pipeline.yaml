@@ -78,6 +78,14 @@ main:
                         name: ${prodes_ingest_job}
                         connector_params:
                           timeout: 7200
+            - snis_ingest:
+                steps:
+                  - run_snis_ingest:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${snis_ingest_job}
+                        connector_params:
+                          timeout: 7200
 
     - dim_municipality:
         call: googleapis.run.v2.projects.locations.jobs.run
@@ -145,6 +153,14 @@ main:
                       call: googleapis.run.v2.projects.locations.jobs.run
                       args:
                         name: ${prodes_job}
+                        connector_params:
+                          timeout: 7200
+            - snis:
+                steps:
+                  - run_snis:
+                      call: googleapis.run.v2.projects.locations.jobs.run
+                      args:
+                        name: ${snis_job}
                         connector_params:
                           timeout: 7200
 
