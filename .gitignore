@@ -32,3 +32,4 @@ chroma_db
 
 # Dados e previsões do benchmark de modelos (gerados localmente)
 data_science/benchmarks/output/
+data_science/study/output/
