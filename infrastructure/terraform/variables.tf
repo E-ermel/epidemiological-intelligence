@@ -58,3 +58,20 @@ variable "data_science_image" {
   description = "Docker image used by the Data Science Cloud Run Job"
   type        = string
 }
+variable "bigquery_alert_table" {
+  description = "Tabela do alerta de surtos (gravada pelo job de data science, lida pela API)"
+  type        = string
+  default     = "outbreak_alerts"
+}
+
+variable "alert_artifact_prefix" {
+  description = "Prefixo no bucket do resumo da rodada do alerta (<prefixo>/latest.json)"
+  type        = string
+  default     = "alert"
+}
+
+variable "pipeline_schedule" {
+  description = "Cron (America/Sao_Paulo) da execução automática do pipeline; dia 10, depois da liberação mensal do DATASUS"
+  type        = string
+  default     = "0 6 10 * *"
+}

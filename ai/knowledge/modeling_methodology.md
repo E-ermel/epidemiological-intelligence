@@ -1,176 +1,127 @@
-# Metodologia de Modelagem Epidemiológica
+# Metodologia: estudo clima × doenças e alerta de surtos
 
-## Objetivo
+## Visão geral
 
-Os modelos do projeto Epidemiological Intelligence têm como objetivo
-estimar contagens mensais de casos epidemiológicos utilizando informações
-temporais, municipais e climáticas.
+O projeto Epidemiological Intelligence tem duas partes de modelagem:
 
-Os modelos não foram desenvolvidos para detectar surtos, epidemias ou
-realizar diagnóstico clínico.
+- um **estudo** da relação entre clima, ambiente e doenças, que mede
+  associações (não causas);
+- um **alerta de surtos** mensal, que estima a probabilidade de surto de
+  1 a 3 meses à frente, por UF e por município.
 
-## Doenças modeladas
+Os dados cobrem os 5.570 municípios do Brasil, mês a mês, desde janeiro
+de 2015. Os casos são contados pelo município de residência.
 
-O pipeline possui modelos para:
+## Doenças
 
-- Asma
-- Bronquite Aguda
-- Bronquite Crônica
-- Infarto Agudo do Miocárdio
-- Insuficiência Cardíaca
-- Leptospirose
+- Internações do SIH/SUS: asma, bronquite aguda, bronquite crônica,
+  infarto agudo do miocárdio, insuficiência cardíaca e Oropouche.
+- Notificações do SINAN: leptospirose (casos confirmados) e acidentes
+  por animais peçonhentos, separados por animal (abelha, aranha,
+  escorpião, lagarta, serpente e outros).
 
-## Modelo estatístico
+Oropouche não tem estudo nem alerta: são poucos casos no período.
 
-O modelo utilizado é a regressão Binomial Negativa.
+## Fontes de clima e ambiente
 
-Esse modelo foi escolhido por trabalhar com dados de contagem e permitir
-que a variância seja superior à média, situação conhecida como
-sobredispersão.
+- Clima (INMET): chuva do mês, chuva extrema (máxima horária),
+  temperatura média e umidade relativa. Municípios sem estação usam a
+  estação mais próxima com dado, até 100 km.
+- Uso do solo (MapBiomas), desmatamento (PRODES/INPE), saneamento
+  (SNIS), IDHM e indicadores sociais (Atlas Brasil, censo 2010),
+  população e densidade (IBGE/SIDRA).
 
-Isso é relevante para dados epidemiológicos, nos quais a quantidade de
-casos pode variar significativamente entre municípios e períodos.
+## Estudo: DLNM
 
-## Baseline
+O DLNM (modelo de defasagem distribuída não linear) é uma regressão
+binomial negativa por doença, com offset de população, efeito fixo de
+UF e de mês do ano e tendência temporal. Ele mede quanto o risco muda
+com a chuva e a temperatura e com que atraso (de 0 a 3 meses), em
+relação ao padrão sazonal de cada UF.
 
-Cada doença possui um modelo baseline utilizado como referência.
+Principais resultados (treino 2015–2023):
 
-O modelo final inclui as variáveis selecionadas durante o processo de
-modelagem.
+- Leptospirose e chuva: um mês de 312 mm aumenta o risco em 56% no
+  próprio mês, 40% no mês seguinte, 25% dois meses depois e 9% três
+  meses depois. No acumulado, 440 mm de chuva multiplicam o risco por
+  3,7.
+- Frio (13 °C): aumenta as internações por bronquite crônica (+55%),
+  bronquite aguda (+40%), asma (+19%) e insuficiência cardíaca (+19%).
+- Calor (31 °C): aumenta o infarto (+17%).
+- Acidentes com lagarta sobem com chuva (risco 3,1 vezes maior).
 
-A utilidade das variáveis adicionais é avaliada comparando o desempenho
-do modelo final com o baseline em dados de teste.
+## Estudo: LightGBM e SHAP
 
-## Divisão temporal
+Um LightGBM por doença, com as mesmas entradas do DLNM, mede quais
+variáveis mais pesam (SHAP). A UF é a variável mais forte em quase
+todas as doenças (33% em média). O clima pesa 37% na leptospirose e de
+7% a 24% nas outras doenças. Entre as variáveis de ambiente, as que
+mais pesam são população urbana, IDHM e densidade; desmatamento e
+saneamento pesam pouco quando a UF já está no modelo.
 
-A avaliação utiliza separação temporal entre treino e teste.
+## Alerta de surtos: definição de surto
 
-Dados futuros não devem ser utilizados para construir features
-correspondentes ao período de treinamento.
+Um mês está em surto quando os casos passam do canal endêmico (média
+mais 1,96 desvio-padrão do mesmo mês nos 5 anos anteriores) e atingem
+um mínimo de 5 casos na UF ou 3 no município.
 
-Essa estratégia busca reduzir data leakage e representar melhor o cenário
-real de previsão.
+Para as internações do SIH, o canal pula 2020 e 2021: a queda de
+internações na pandemia inflava o desvio-padrão do canal e escondia
+surtos. O SINAN não teve essa queda e usa o canal normal.
 
-## Variáveis climáticas
+O alerta municipal só cobre séries com pelo menos 1 caso por mês em
+média nos últimos 5 anos; os demais municípios ficam cobertos pelo
+alerta da UF.
 
-Entre as variáveis disponíveis no projeto estão:
+## Alerta de surtos: modelo
 
-- precipitação acumulada;
-- precipitação máxima observada;
-- temperatura média;
-- umidade relativa média;
-- ponto de orvalho;
-- pressão atmosférica;
-- velocidade do vento;
-- rajada máxima do vento.
+O modelo é o Chronos-2 (Amazon), um modelo de fundação para séries
+temporais usado sem treino nos dados do projeto (zero-shot). Ele recebe
+a série de casos e o clima dos meses passados, e prevê a distribuição
+de casos de 1 a 3 meses à frente. A probabilidade de surto é a chance
+de os casos passarem do limite do canal endêmico.
 
-Também podem ser utilizadas versões defasadas (lags) das variáveis.
+O modelo usa cross-learning: lê juntas as séries da mesma doença em UFs
+ou municípios vizinhos, o que ajuda as séries pequenas e ruidosas.
 
-Um lag representa o valor observado em um período anterior.
+Um alerta dispara quando a probabilidade passa do corte: 0,30 na UF e
+0,20 no município. Os cortes foram escolhidos em 2023 para o maior F1.
 
-Por exemplo, precipitation_sum_mm_lag2 representa a precipitação
-observada dois períodos antes.
+## Alerta de surtos: origens fechada e provisória
 
-## Métricas
+Cada rodada mensal prevê a partir de duas origens:
 
-### MAE
+- "fechado": o último mês com dados completos. No SIH, o último mês sem
+  dado provisório (as internações chegam com até 4 meses de atraso). No
+  SINAN, dois meses antes do último mês com dados. É a leitura padrão e
+  a mais confiável; parte dos meses previstos pode já ter passado.
+- "provisorio": o último mês disponível, com dados ainda incompletos,
+  que tendem a subestimar os casos e a gerar menos alertas.
 
-Mean Absolute Error representa a média do erro absoluto entre valores
-observados e previstos.
+## Alerta de surtos: desempenho no teste
 
-Quanto menor o MAE, melhor.
+O teste usou 2024 e 2025, com o corte escolhido em 2023:
 
-### RMSE
+- UF: precisão 0,56, recall 0,55, F1 0,55, AUC-ROC 0,83. De cada 100
+  alertas, 56 foram surtos; de cada 100 surtos, 55 foram alertados.
+- Município: precisão 0,33, recall 0,54, F1 0,41, AUC-ROC 0,81. O
+  alerta pega metade dos surtos municipais, com cerca de 2 alarmes
+  falsos para cada acerto.
 
-Root Mean Squared Error penaliza erros grandes com maior intensidade.
-
-Quanto menor o RMSE, melhor.
-
-### R²
-
-R² mede a capacidade do modelo de explicar a variabilidade observada
-nos dados.
-
-Valores mais próximos de 1 indicam maior capacidade explicativa.
-
-R² deve ser interpretado em conjunto com outras métricas.
-
-### WAPE
-
-Weighted Absolute Percentage Error representa o erro absoluto total em
-relação ao volume total observado.
-
-Quanto menor o WAPE, melhor.
-
-## Significância estatística e previsão
-
-Uma variável estatisticamente significativa não necessariamente melhora
-a capacidade preditiva do modelo.
-
-Significância estatística e desempenho fora da amostra representam
-questões diferentes e devem ser avaliadas separadamente.
-
-## Associação e causalidade
-
-Os modelos podem identificar associações entre variáveis climáticas e
-contagens epidemiológicas.
-
-Essas associações não devem ser interpretadas automaticamente como
-relações causais.
-
-Outros fatores epidemiológicos, ambientais, sociais e demográficos que
-não estão presentes no modelo podem influenciar o número de casos.
+O Chronos-2 superou os modelos estatísticos (GLM binomial negativo) e
+de aprendizado de máquina (LightGBM) testados, e também a regra de
+persistência (alertar se o mês atual está em surto).
 
 ## Limitações
 
-Os modelos utilizam apenas as informações disponíveis no pipeline.
-
-Eventos extremos e mudanças abruptas no padrão epidemiológico podem gerar
-erros maiores quando os fatores responsáveis por essas mudanças não estão
-adequadamente representados pelas features disponíveis no modelo.
-
-## Caso específico da leptospirose
-
-A leptospirose apresentou desempenho preditivo inferior às demais doenças
-quando avaliada no conjunto de teste completo.
-
-Uma característica importante desse período é a presença de 2024, ano em
-que ocorreram eventos hidrológicos extremos no Rio Grande do Sul, incluindo
-as grandes enchentes.
-
-Esses eventos produziram um comportamento epidemiológico muito diferente
-do padrão histórico observado no conjunto de treinamento.
-
-Foi realizada também uma análise alternativa desconsiderando esse período
-extremo. Nessa avaliação, o desempenho do modelo de leptospirose apresentou
-melhora em relação à avaliação que incluía 2024.
-
-Esse resultado sugere que eventos extremos podem afetar significativamente
-a capacidade preditiva do modelo quando esses fenômenos não estão
-adequadamente representados pelas variáveis utilizadas.
-
-Entretanto, essa análise não permite afirmar que as enchentes foram a causa
-direta do erro do modelo ou do aumento dos casos. Ela mostra apenas que o
-desempenho do modelo muda quando um período epidemiologicamente atípico é
-retirado da avaliação.
-
-Portanto, os resultados da leptospirose devem ser interpretados em dois
-contextos:
-
-- desempenho no conjunto completo, incluindo eventos extremos;
-- desempenho em condições mais próximas do padrão histórico.
-
-Essa distinção é importante ao avaliar a capacidade de generalização do
-modelo.
-
-## Uso das previsões
-
-As previsões representam estimativas agregadas de contagens de casos
-por município e período.
-
-Elas não devem ser utilizadas como:
-
-- diagnóstico individual;
-- previsão determinística de surtos;
-- recomendação médica;
-- evidência de causalidade.
+- O alerta aprende com a dinâmica recente dos casos. Ele não antecipou
+  o pico de leptospirose no RS em maio de 2024, causado pela enchente:
+  a chuva extrema caiu no próprio mês previsto.
+- Variáveis de ambiente e a previsão do tempo foram testadas como
+  entradas do alerta e não melhoraram o resultado no município.
+- Os dados recentes são provisórios: o SINAN do ano corrente é
+  preliminar e o SIH recebe internações atrasadas.
+- O estudo mede associação, não causalidade. Os indicadores do Atlas
+  são do censo de 2010.
+- "Surto" aqui é uma definição estatística, não uma declaração oficial
+  da vigilância epidemiológica.

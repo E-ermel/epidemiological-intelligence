@@ -22,7 +22,7 @@ export interface ChatMessage {
 /** Suggested prompts shown on the Agente IA page -- illustrative only. */
 export const SUGGESTED_QUESTIONS = [
   "Quantos casos de leptospirose ocorreram em Porto Alegre em 2024?",
-  "Quais as métricas do modelo de asma?",
-  "Qual a previsão de bronquite aguda para os próximos meses?",
-  "Como o modelo de infarto foi construído?",
+  "Quais UFs estão em alerta de surto de escorpião?",
+  "Tem risco de surto de leptospirose no RS nos próximos meses?",
+  "Quão confiável é o alerta de surtos?",
 ] as const;

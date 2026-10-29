@@ -41,3 +41,8 @@ export function formatMonth(value: string | Date): string {
     timeZone: "UTC",
   }).format(date);
 }
+
+/** Outbreak probability (0–1) as a whole percentage, e.g. 0.724 -> "72%". */
+export function formatProbability(probability: number): string {
+  return `${Math.round(probability * 100)}%`;
+}

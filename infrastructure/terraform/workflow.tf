@@ -1,8 +1,8 @@
 # ============================================================
 # Cloud Workflows - orquestração do pipeline
 #
-# Substitui o Airflow: inmet + sinan (em paralelo) -> gold (que
-# também carrega o BigQuery) -> modelagem.
+# Substitui o Airflow: ingestão e silver de cada fonte (em paralelo) ->
+# gold (que também carrega o BigQuery) -> alerta de surtos.
 # Execução manual: gcloud workflows run epidemiological-pipeline --location=us-central1
 # ============================================================
 
@@ -57,7 +57,7 @@ resource "google_workflows_workflow" "pipeline" {
   project         = var.project_id
   name            = "epidemiological-pipeline"
   region          = var.region
-  description     = "ingestao (ibge, inmet, sih, sinan, sidra, atlas, mapbiomas, prodes, snis) -> ibge -> silver de cada fonte -> gold nacional (+ BigQuery)"
+  description     = "ingestao (ibge, inmet, sih, sinan, sidra, atlas, mapbiomas, prodes, snis) -> ibge -> silver de cada fonte -> gold nacional (+ BigQuery) -> alerta de surtos"
   service_account = google_service_account.pipeline_workflow.id
 
   # job.id = "projects/<p>/locations/<r>/jobs/<nome>", o formato que o

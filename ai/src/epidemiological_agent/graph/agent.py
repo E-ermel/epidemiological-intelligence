@@ -11,18 +11,16 @@ load_dotenv()
 from epidemiological_agent.tools.llm_tools import (
     epidemiological_data_tool,
     total_cases_tool,
-    model_metrics_tool,
-    model_predictions_tool,
-    municipality_model_metrics_tool,
+    outbreak_alerts_tool,
+    alert_model_info_tool,
     retrieve_knowledge_tool,
 )
 
 tools = [
     epidemiological_data_tool,
     total_cases_tool,
-    model_metrics_tool,
-    model_predictions_tool,
-    municipality_model_metrics_tool,
+    outbreak_alerts_tool,
+    alert_model_info_tool,
     retrieve_knowledge_tool,
 ]
 

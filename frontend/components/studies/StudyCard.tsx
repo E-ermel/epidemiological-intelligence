@@ -3,6 +3,17 @@ import type { StudySummary } from "@/types/study";
 import { Badge } from "@/components/ui/Badge";
 import { formatNumber } from "@/lib/utils";
 
+/** UFs em alerta de surto nos próximos 3 meses (origem "fechado"). */
+function AlertBadge({ statesInAlert }: { statesInAlert: number | null }) {
+  if (statesInAlert === null) return <Badge tone="neutral">sem alerta</Badge>;
+  if (statesInAlert === 0) return <Badge tone="success">nenhuma UF em alerta</Badge>;
+  return (
+    <Badge tone="warning">
+      {statesInAlert} {statesInAlert === 1 ? "UF em alerta" : "UFs em alerta"}
+    </Badge>
+  );
+}
+
 export function StudyCard({
   study,
   onExpand,
@@ -18,11 +29,8 @@ export function StudyCard({
     >
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">{study.label}</h3>
-        {study.activeModelVersion ? (
-          <Badge tone="primary">{study.activeModelVersion}</Badge>
-        ) : (
-          <Badge tone="neutral">sem modelo</Badge>
-        )}
+        <AlertBadge statesInAlert={study.statesInAlert} />
+
       </div>
 
       <p className="flex-1 text-xs leading-relaxed text-muted">{study.description}</p>

@@ -10,6 +10,7 @@ surtos. Roda no venv de data_science/benchmarks (ver README).
 """
 
 import os
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -17,7 +18,7 @@ import pandas as pd
 
 OUTPUT_DIR = Path(os.getenv("STUDY_OUTPUT_DIR", Path(__file__).parent / "output"))
 PANEL_PATHS = {"uf": OUTPUT_DIR / "panel_uf.parquet", "municipio": OUTPUT_DIR / "panel_municipio.parquet"}
-ALERT_DIR = OUTPUT_DIR / "alert"
+ALERT_DIR = OUTPUT_DIR / os.getenv("STUDY_ALERT_DIR", "alert")
 
 FIRST_MONTH = pd.Timestamp("2015-01-01")
 LAST_MONTH = pd.Timestamp("2025-12-01")
@@ -90,6 +91,10 @@ LABELS = {
 CHANNEL_YEARS = 5
 CHANNEL_Z = 1.96
 MIN_CASES = {"uf": 5, "municipio": 3}
+# Anos que não entram no canal (ex.: "2020,2021", a queda de internações
+# da pandemia baixa os limites e cria falsos surtos). O canal usa os 5
+# anos anteriores mais recentes fora dessa lista.
+CHANNEL_EXCLUDED_YEARS = [int(y) for y in os.getenv("STUDY_CHANNEL_EXCLUDE", "").split(",") if y]
 
 # Série municipal entra no alerta com média >= 1 caso/mês até 2022;
 # as demais ficam só no alerta da UF.
@@ -120,11 +125,22 @@ def endemic_channel(panel: pd.DataFrame, level: str) -> pd.DataFrame:
     df["calendar_month"] = df["ds"].dt.month
 
     # Agrupado por mês do calendário (grade mensal completa), shift(k) é
-    # o mesmo mês k anos antes.
-    grouped = df.groupby([*keys, "calendar_month"])["y"]
-    past = pd.concat([grouped.shift(k) for k in range(1, CHANNEL_YEARS + 1)], axis=1)
-    df["channel_mean"] = past.mean(axis=1, skipna=False)
-    df["channel_sd"] = past.std(axis=1, skipna=False, ddof=1)
+    # o mesmo mês k anos antes. Anos excluídos viram NaN e o canal pega
+    # os CHANNEL_YEARS valores mais recentes que sobram.
+    excluded = df["ds"].dt.year.isin(CHANNEL_EXCLUDED_YEARS)
+    df["_y_channel"] = df["y"].where(~excluded)
+    grouped = df.groupby([*keys, "calendar_month"])["_y_channel"]
+    depth = CHANNEL_YEARS + len(CHANNEL_EXCLUDED_YEARS)
+    past = np.column_stack([grouped.shift(k).to_numpy(dtype=float) for k in range(1, depth + 1)])
+    valid = ~np.isnan(past)
+    keep = valid & (np.cumsum(valid, axis=1) <= CHANNEL_YEARS)
+    kept = np.where(keep, past, np.nan)
+    enough = keep.sum(axis=1) == CHANNEL_YEARS
+    with warnings.catch_warnings():  # linhas sem 5 anos: fatia vazia, viram NaN
+        warnings.simplefilter("ignore", RuntimeWarning)
+        df["channel_mean"] = np.where(enough, np.nanmean(kept, axis=1), np.nan)
+        df["channel_sd"] = np.where(enough, np.nanstd(kept, axis=1, ddof=1), np.nan)
+    df = df.drop(columns="_y_channel")
     df["threshold"] = df["channel_mean"] + CHANNEL_Z * df["channel_sd"]
     df["outbreak"] = ((df["y"] > df["threshold"]) & (df["y"] >= MIN_CASES[level])).astype("int8")
     df.loc[df["threshold"].isna(), "outbreak"] = -1  # sem 5 anos de histórico

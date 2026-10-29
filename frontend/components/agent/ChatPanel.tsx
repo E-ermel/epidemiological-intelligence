@@ -63,10 +63,10 @@ export function ChatPanel() {
             </span>
             <div>
               <p className="text-sm font-medium text-foreground">
-                Pergunte sobre casos, modelos ou metodologia
+                Pergunte sobre casos, alertas de surto ou metodologia
               </p>
               <p className="mt-1 text-xs text-muted">
-                O assistente consulta o BigQuery, os artefatos dos modelos e a documentação de
+                O assistente consulta os dados no BigQuery, os alertas de surto e a documentação de
                 metodologia do projeto.
               </p>
             </div>

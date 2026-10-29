@@ -8,7 +8,7 @@ export const NAV_ITEMS = [
   { label: "Visão Geral", href: "/" },
   { label: "Estudos", href: "/estudos" },
   { label: "Explorar Dados", href: "/dados" },
-  { label: "Modelos", href: "/modelos" },
+  { label: "Alertas", href: "/alertas" },
   { label: "Agente IA", href: "/agente" },
 ] as const;
 
@@ -98,29 +98,34 @@ export const STATES: { code: string; name: string }[] = [
  * API does return (GET /studies).
  */
 export const DISEASE_DESCRIPTIONS: Record<DiseaseCode, string> = {
-  ASMA: "Casos de asma associados a umidade relativa e ponto de orvalho, com defasagem climática de 1 mês.",
+  ASMA: "Internações por asma. Sobem no frio: a 13 °C, o risco é cerca de 19% maior que na temperatura mediana.",
   "BRONQUITE AGUDA":
-    "Casos de bronquite aguda associados a umidade e precipitação, com defasagem de até 3 meses.",
+    "Internações por bronquite aguda, fortemente sazonais. O frio aumenta o risco em cerca de 40%.",
   "BRONQUITE CRÔNICA":
-    "Casos de bronquite crônica associados à intensidade de rajadas de vento.",
+    "Internações por bronquite crônica/DPOC. É a doença mais sensível ao frio: risco cerca de 55% maior a 13 °C.",
   "INFARTO AGUDO DO MIOCÁRDIO":
-    "Casos de infarto associados à velocidade média do vento do mês anterior.",
+    "Internações por infarto. Sobem nos extremos de temperatura: +10% no frio e +17% no calor (31 °C).",
   "INSUFICIÊNCIA CARDÍACA":
-    "Casos de insuficiência cardíaca associados a pressão atmosférica e ponto de orvalho.",
+    "Internações por insuficiência cardíaca, cerca de 19% mais frequentes nos meses frios.",
   OROPOUCHE:
-    "Internações por febre do Oropouche (CID A93.0). Quase só zeros antes de 2024, quando a doença se espalhou para fora da Amazônia.",
+    "Internações por febre do Oropouche (CID A93.0). Quase só zeros antes de 2024, quando a doença se espalhou para fora da Amazônia; ainda sem alerta.",
   LEPTOSPIROSE:
-    "Casos de leptospirose associados a precipitação e umidade relativa do mês anterior -- o padrão sazonal mais forte da base.",
+    "Casos confirmados de leptospirose. É a doença mais ligada à chuva: um mês muito chuvoso multiplica o risco por até 3,7, com efeito no próprio mês e no seguinte.",
   "ACIDENTE POR ESCORPIÃO":
-    "Notificações de acidentes com escorpião -- o tipo mais comum no país, urbano e fortemente sazonal.",
+    "Notificações de acidentes com escorpião -- o tipo mais comum no país, urbano e fortemente sazonal (raros no frio).",
   "ACIDENTE POR SERPENTE":
-    "Notificações de acidentes ofídicos, concentrados em áreas rurais e na estação chuvosa.",
-  "ACIDENTE POR ARANHA": "Notificações de acidentes com aranha (araneísmo).",
-  "ACIDENTE POR ABELHA": "Notificações de acidentes com abelha.",
-  "ACIDENTE POR LAGARTA": "Notificações de acidentes com lagarta (erucismo).",
+    "Notificações de acidentes ofídicos, concentrados em áreas rurais e nos meses quentes.",
+  "ACIDENTE POR ARANHA":
+    "Notificações de acidentes com aranha, que no Sul têm pico no outono e no inverno.",
+  "ACIDENTE POR ABELHA": "Notificações de acidentes com abelha, mais comuns nos meses quentes e secos.",
+  "ACIDENTE POR LAGARTA":
+    "Notificações de acidentes com lagarta (erucismo), que sobem com a chuva (risco até 3,1 vezes maior).",
   "ACIDENTE POR OUTRO ANIMAL PEÇONHENTO":
     "Notificações de acidentes com outros animais peçonhentos ou com o animal não identificado.",
 };
+
+/** Diseases from SIH/SUS hospitalizations; the rest come from SINAN notifications. */
+export const HOSPITALIZATION_DISEASES: DiseaseCode[] = DISEASES.slice(0, 6).map((d) => d.code);
 
 /**
  * Climate fields on EpidemiologicalRecord (types/data.ts), paired with

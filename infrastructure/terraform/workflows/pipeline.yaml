@@ -6,7 +6,7 @@
 #   -> dim_municipality (IBGE)
 #   -> silver (INMET usa a dim + malha para ligar estação a município;
 #      SIH lê os .dbc por UF)
-#   -> gold (+ BigQuery) -> modelagem
+#   -> gold (+ BigQuery) -> alerta de surtos
 main:
   steps:
     - ingest:
@@ -173,9 +173,15 @@ main:
           connector_params:
             timeout: 7200
 
-    # Sem passo de modelagem por enquanto: o modelo atual (um GLM com
-    # C(municipality)) não roda no gold nacional, e o substituto sai do
-    # benchmark em data_science/benchmarks/. O job continua existindo
-    # (${ds_job}) para voltar aqui quando o modelo novo estiver pronto.
+    # Alerta de surtos (Chronos-2 + clima passado + cross-learning, ver
+    # data_science/study/): lê o gold no BigQuery e grava outbreak_alerts.
+    # ~25 min em CPU (o município é quase tudo).
+    - outbreak_alert:
+        call: googleapis.run.v2.projects.locations.jobs.run
+        args:
+          name: ${ds_job}
+          connector_params:
+            timeout: 7200
+
     - done:
         return: "Pipeline concluído"

@@ -112,123 +112,97 @@ def test_epidemiological_data_tool_allows_start_date_within_range(monkeypatch):
     assert parsed[0]["cases"] == 3
 
 
-def test_model_metrics_tool_returns_metrics_as_json(monkeypatch):
-    metrics = {"base": {"mae": 1.0}, "final": {"mae": 0.9}}
-    monkeypatch.setattr(
-        llm_tools,
-        "get_model_metrics",
-        lambda disease: metrics,
-    )
+_FAKE_ALERTS = pd.DataFrame(
+    [
+        {
+            "origin_type": "fechado", "origin_month": pd.Timestamp("2026-03-01"), "disease": "ASMA",
+            "state": "RS", "municipality_name": None, "target_month": pd.Timestamp("2026-04-01"),
+            "horizon": 1, "probability": 0.71, "alert": True, "threshold": 120.0, "cases_p10": 100.0,
+            "cases_p50": 130.0, "cases_p90": 160.0, "observed_cases": 140.0,
+        }
+    ]
+)
 
-    result = llm_tools.model_metrics_tool.invoke({"disease": "ASMA"})
 
-    assert json.loads(result) == metrics
+def test_outbreak_alerts_tool_returns_state_level_rows(monkeypatch):
+    seen = {}
 
+    def fake_latest(filters, limit):
+        seen["filters"] = filters
+        return _FAKE_ALERTS
 
-def test_model_metrics_tool_handles_file_not_found(monkeypatch):
-    monkeypatch.setattr(
-        llm_tools,
-        "get_model_metrics",
-        _raise(FileNotFoundError()),
-    )
+    monkeypatch.setattr(llm_tools.alert_queries, "latest_alerts", fake_latest)
 
-    result = llm_tools.model_metrics_tool.invoke({"disease": "ASMA"})
+    result = llm_tools.outbreak_alerts_tool.invoke({"disease": "ASMA", "state": "RS"})
 
     parsed = json.loads(result)
+    assert parsed[0]["probability"] == 0.71
+    assert seen["filters"].level == "uf"
+    assert seen["filters"].origin_type == "fechado"
+    assert seen["filters"].only_alerts is True
+
+
+def test_outbreak_alerts_tool_resolves_municipality_to_code(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        llm_tools.gold_queries,
+        "municipalities",
+        lambda state=None: pd.DataFrame(
+            [{"municipality_code": "431490", "municipality_name": "Porto Alegre", "state": "RS"}]
+        ),
+    )
+
+    def fake_latest(filters, limit):
+        seen["filters"] = filters
+        return _FAKE_ALERTS
+
+    monkeypatch.setattr(llm_tools.alert_queries, "latest_alerts", fake_latest)
+
+    llm_tools.outbreak_alerts_tool.invoke({"municipality": "porto alegre", "state": "RS"})
+
+    assert seen["filters"].level == "municipio"
+    assert seen["filters"].municipality_code == "431490"
+
+
+def test_outbreak_alerts_tool_asks_for_state_on_homonyms(monkeypatch):
+    monkeypatch.setattr(
+        llm_tools.gold_queries,
+        "municipalities",
+        lambda state=None: pd.DataFrame(
+            [
+                {"municipality_code": "431690", "municipality_name": "Santa Maria", "state": "RS"},
+                {"municipality_code": "241250", "municipality_name": "Santa Maria", "state": "RN"},
+            ]
+        ),
+    )
+
+    result = llm_tools.outbreak_alerts_tool.invoke({"municipality": "Santa Maria"})
+
+    assert "RN, RS" in result
+
+
+def test_outbreak_alerts_tool_handles_query_failure(monkeypatch):
+    monkeypatch.setattr(llm_tools.alert_queries, "latest_alerts", _raise(GoogleAPIError("boom")))
+
+    parsed = json.loads(llm_tools.outbreak_alerts_tool.invoke({"disease": "ASMA"}))
+
     assert parsed["status"] == "error"
-    assert parsed["source"] == "gcs"
+    assert parsed["error_type"] == "alerts_unavailable"
+
+
+def test_alert_model_info_tool_reports_missing_run(monkeypatch):
+    monkeypatch.setattr(llm_tools.alert_queries, "model_info", lambda: None)
+
+    parsed = json.loads(llm_tools.alert_model_info_tool.invoke({}))
+
     assert parsed["error_type"] == "artifact_not_found"
 
 
-def test_model_metrics_tool_handles_google_api_error(monkeypatch):
-    monkeypatch.setattr(
-        llm_tools,
-        "get_model_metrics",
-        _raise(GoogleAPIError("boom")),
-    )
+def test_alert_model_info_tool_returns_info_as_json(monkeypatch):
+    info = {"model_version": "chronos2-clima-cross-v1", "cutoffs": {"uf": 0.3}}
+    monkeypatch.setattr(llm_tools.alert_queries, "model_info", lambda: info)
 
-    result = llm_tools.model_metrics_tool.invoke({"disease": "ASMA"})
-
-    parsed = json.loads(result)
-    assert parsed["status"] == "error"
-    assert parsed["source"] == "gcs"
-    assert parsed["error_type"] == "storage_unavailable"
-
-
-def test_municipality_model_metrics_tool_filters_by_municipality(monkeypatch):
-    df = pd.DataFrame(
-        [
-            {"municipality": "PORTO ALEGRE", "mae": 1.0},
-            {"municipality": "CANOAS", "mae": 2.0},
-        ]
-    )
-    monkeypatch.setattr(
-        llm_tools,
-        "get_municipality_metrics",
-        lambda disease: df,
-    )
-
-    result = llm_tools.municipality_model_metrics_tool.invoke(
-        {"disease": "ASMA", "municipality": "PORTO ALEGRE"}
-    )
-
-    parsed = json.loads(result)
-    assert len(parsed) == 1
-    assert parsed[0]["municipality"] == "PORTO ALEGRE"
-
-
-def test_municipality_model_metrics_tool_returns_message_when_not_found(monkeypatch):
-    df = pd.DataFrame(
-        [{"municipality": "CANOAS", "mae": 2.0}]
-    )
-    monkeypatch.setattr(
-        llm_tools,
-        "get_municipality_metrics",
-        lambda disease: df,
-    )
-
-    result = llm_tools.municipality_model_metrics_tool.invoke(
-        {"disease": "ASMA", "municipality": "PORTO ALEGRE"}
-    )
-
-    assert "No model metrics found" in result
-    assert "PORTO ALEGRE" in result
-
-
-def test_model_predictions_tool_filters_by_municipality(monkeypatch):
-    df = pd.DataFrame(
-        [
-            {"municipality": "PORTO ALEGRE", "observed": 10, "predicted": 9},
-            {"municipality": "CANOAS", "observed": 5, "predicted": 4},
-        ]
-    )
-    monkeypatch.setattr(
-        llm_tools,
-        "get_predictions",
-        lambda disease: df,
-    )
-
-    result = llm_tools.model_predictions_tool.invoke(
-        {"disease": "ASMA", "municipality": "CANOAS"}
-    )
-
-    parsed = json.loads(result)
-    assert len(parsed) == 1
-    assert parsed[0]["municipality"] == "CANOAS"
-
-
-def test_model_predictions_tool_returns_message_when_empty(monkeypatch):
-    monkeypatch.setattr(
-        llm_tools,
-        "get_predictions",
-        lambda disease: pd.DataFrame(),
-    )
-
-    result = llm_tools.model_predictions_tool.invoke(
-        {"disease": "ASMA"}
-    )
-
-    assert result == "No predictions found."
+    assert json.loads(llm_tools.alert_model_info_tool.invoke({})) == info
 
 
 def test_climate_summary_tool_returns_summary_as_json(monkeypatch):

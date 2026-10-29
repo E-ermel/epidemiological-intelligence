@@ -252,7 +252,7 @@ jobs:
       - name: Deploy Data Science Cloud Run Job
         if: ${{ inputs.component == 'data-science' || inputs.component == 'all' }}
         run: |
-          gcloud run jobs update epidemiological-ds-modeling \
+          gcloud run jobs update epidemiological-ds-alert \
             --project=${{ vars.GCP_PROJECT_ID }} \
             --region=${{ vars.GCP_REGION }} \
             --image=${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.DS_REPOSITORY }}/${{ env.DS_IMAGE }}:${{ github.sha }} \

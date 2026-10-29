@@ -4,11 +4,7 @@ import pandas as pd
 from langchain_core.tools import tool
 from google.api_core.exceptions import GoogleAPIError
 
-from epidemiological_agent.tools.model_tools import (
-    get_model_metrics,
-    get_predictions,
-    get_municipality_metrics
-)
+from epidemiological_agent.tools import alert_queries, gold_queries
 
 from epidemiological_agent.tools.bigquery_tools import (
     query_epidemiological_data,
@@ -108,109 +104,118 @@ def epidemiological_data_tool(
     )
     
 @tool
-def model_metrics_tool(
-    disease: str,
+def outbreak_alerts_tool(
+    disease: str | None = None,
+    state: str | None = None,
+    municipality: str | None = None,
+    origin_type: str = "fechado",
+    only_alerts: bool = True,
 ) -> str:
     """
-    Return evaluation metrics for a disease model.
+    Return the outbreak alert of the latest monthly run: for each
+    series, the probability of an outbreak 1, 2 and 3 months ahead,
+    whether it crossed the alert cutoff, and the expected cases
+    (p10, median, p90) against the endemic channel threshold.
 
-    Use this tool when the user asks for actual model
-    performance metrics such as MAE, RMSE, R2, WAPE,
-    or comparison between baseline and final model.
+    Use this tool when the user asks about outbreak alerts, outbreak
+    risk, "surto", "alerta", or what is expected for the next months.
+
+    - Without `municipality`, returns the state (UF) level alert.
+    - With `municipality`, pass `state` too (names repeat across states).
+    - `origin_type`: "fechado" (forecast from the last month with
+      complete data, the default and more reliable) or "provisorio"
+      (from the latest month, whose data is still incomplete).
+    - `only_alerts=False` also returns series below the cutoff.
+
+    An outbreak here means cases above the endemic channel (mean + 1.96
+    standard deviations of the same month in the previous 5 years) and
+    at least 5 cases in a state or 3 in a municipality.
+    """
+
+    if origin_type not in alert_queries.ORIGIN_TYPES:
+        origin_type = "fechado"
+
+    municipality_code = None
+    if municipality:
+        options = gold_queries.municipalities(state)
+        target = gold_queries.normalize_name(municipality)
+        matches = options[options["municipality_name"].map(gold_queries.normalize_name) == target]
+        if matches.empty:
+            return f"Municipality not found: {municipality}" + (f" ({state})" if state else "") + "."
+        if len(matches) > 1:
+            return (
+                f"{municipality} exists in more than one state "
+                f"({', '.join(sorted(matches['state']))}); pass `state`."
+            )
+        municipality_code = matches["municipality_code"].iloc[0]
+
+    try:
+        df = alert_queries.latest_alerts(
+            alert_queries.AlertFilters(
+                level="municipio" if municipality_code else "uf",
+                origin_type=origin_type,
+                disease=disease,
+                state=state,
+                municipality_code=municipality_code,
+                only_alerts=only_alerts,
+            ),
+            limit=60,
+        )
+    except GoogleAPIError:
+        logger.exception("BigQuery query failed in outbreak_alerts_tool")
+        return tool_error_response(
+            source="bigquery",
+            error_type="alerts_unavailable",
+            message="Não foi possível consultar os alertas de surto.",
+        )
+
+    if df.empty:
+        if municipality_code:
+            return (
+                "No alert rows for this municipality: either nothing is above the cutoff, or the series "
+                "has too few cases (municipal alerts need >= 1 case/month on average; the state alert "
+                "still covers it)."
+            )
+        return "No outbreak alerts for the requested filters in the latest run."
+
+    columns = [
+        "origin_type", "origin_month", "disease", "state", "municipality_name", "target_month", "horizon",
+        "probability", "alert", "threshold", "cases_p10", "cases_p50", "cases_p90", "observed_cases",
+    ]
+    numeric = ["probability", "threshold", "cases_p10", "cases_p50", "cases_p90", "observed_cases"]
+    return df[columns].round(dict.fromkeys(numeric, 3)).to_json(orient="records", date_format="iso", force_ascii=False)
+
+
+@tool
+def alert_model_info_tool() -> str:
+    """
+    Return how the outbreak alert model works and how well it did on
+    the 2024-2025 test: model, covariates, alert cutoffs, precision,
+    recall, F1, AUC and the origin months of the latest run.
+
+    Use this tool when the user asks how reliable the alerts are,
+    which model is used, or for its metrics.
     """
 
     try:
-        metrics = get_model_metrics(
-            disease
-        )
-
-        return json.dumps(
-            metrics,
-            ensure_ascii=False,
-        )
-
-    except FileNotFoundError:
-        logger.warning(
-            "Model metrics artifact not found | disease=%s",
-            disease,
-        )
-
-        return tool_error_response(
-            source="gcs",
-            error_type="artifact_not_found",
-            message=(
-                f"Não foram encontrados artefatos "
-                f"do modelo para {disease}."
-            ),
-        )
-
+        info = alert_queries.model_info()
     except GoogleAPIError:
-        logger.exception(
-            "Failed to access model metrics in GCS | disease=%s",
-            disease,
-        )
-
+        logger.exception("Failed to read alert model info in GCS")
         return tool_error_response(
             source="gcs",
             error_type="storage_unavailable",
-            message=(
-                "Não foi possível acessar os artefatos "
-                "dos modelos no GCS."
-            ),
-        )
-        
-@tool
-def municipality_model_metrics_tool(
-    disease: str,
-    municipality: str,
-) -> str:
-    """
-    Return model performance metrics for a specific municipality.
-    """
-
-    df = get_municipality_metrics(
-        disease
-    )
-
-    result = df[
-        df["municipality"] == municipality
-    ]
-
-    if result.empty:
-        return (
-            f"No model metrics found for "
-            f"{municipality} and {disease}."
+            message="Não foi possível acessar as informações do modelo de alerta.",
         )
 
-    return result.to_json(
-        orient="records",
-    )
-    
-@tool
-def model_predictions_tool(
-    disease: str,
-    municipality: str | None = None,
-) -> str:
-    """
-    Return observed versus predicted case counts for a disease.
-    """
+    if info is None:
+        return tool_error_response(
+            source="gcs",
+            error_type="artifact_not_found",
+            message="O alerta de surtos ainda não foi gerado.",
+        )
 
-    df = get_predictions(
-        disease
-    )
+    return json.dumps(info, ensure_ascii=False)
 
-    if municipality is not None:
-        df = df[
-            df["municipality"] == municipality
-        ]
-
-    if df.empty:
-        return "No predictions found."
-
-    return df.to_json(
-        orient="records",
-        date_format="iso",
-    )
 
 @tool
 def total_cases_tool(
