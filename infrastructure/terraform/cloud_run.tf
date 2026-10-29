@@ -177,6 +177,18 @@ locals {
       region = var.region
     }
 
+    # Arquivos do dashboard PRODES (TerraBrasilis/INPE), servidor do
+    # governo: ingestão no Brasil, como as demais.
+    prodes-ingest = {
+      module = "epidemiological_de.prodes.ingest"
+      region = var.ingest_region
+    }
+
+    prodes = {
+      module = "epidemiological_de.prodes.pipeline"
+      region = var.region
+    }
+
     # Silver do SIH: uma task por UF, lendo o bronze no GCS.
     sih = {
       module     = "epidemiological_de.sih.pipeline"

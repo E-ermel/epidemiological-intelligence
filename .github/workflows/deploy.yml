@@ -301,6 +301,8 @@ jobs:
             atlas:${{ vars.GCP_REGION }}
             mapbiomas-ingest:${{ vars.GCP_REGION }}
             mapbiomas:${{ vars.GCP_REGION }}
+            prodes-ingest:southamerica-east1
+            prodes:${{ vars.GCP_REGION }}
         run: |
           for entry in $DE_JOBS; do
             job="${entry%%:*}"

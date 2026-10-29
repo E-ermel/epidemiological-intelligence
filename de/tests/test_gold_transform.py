@@ -207,6 +207,10 @@ LAND_COVER = pd.DataFrame(
     {"municipality_code_6": ["431490"], "year": [2023], **{column: [10.0] for column in transform.LAND_COVER_COLUMNS}}
 ).assign(land_urban_pct=38.5)
 
+DEFORESTATION = pd.DataFrame(
+    {"municipality_code_6": ["431490"], "year": [2023], "deforestation_km2": [0.1], "deforestation_pct": [0.02]}
+)
+
 ATLAS = pd.DataFrame(
     {"municipality_code_6": ["431490"], **{column: [0.5] for column in transform.ATLAS_COLUMNS}}
 ).assign(atlas_idhm=0.805)
@@ -221,7 +225,7 @@ def _gold():
         transform.provisional_months(SILVER),
         DIM,
         transform.municipality_climate(aggregate_station_monthly(_inmet_fixture()), _station_map_fixture(), DIM, 100),
-        [POPULATION, LAND_COVER],
+        [POPULATION, LAND_COVER, DEFORESTATION],
         [ATLAS],
     )
 
@@ -260,6 +264,9 @@ def test_gold_carries_names_codes_flags_and_climate():
 
     assert gold.loc[("431490", 2), "land_urban_pct"] == 38.5
     assert pd.isna(gravatai["land_urban_pct"])
+
+    assert gold.loc[("431490", 1), "deforestation_km2"] == 0.1
+    assert pd.isna(gravatai["deforestation_km2"])
 
     assert bool(gold.loc[("431490", 2), "is_provisional"]) is True
     assert bool(gold.loc[("431490", 1), "is_provisional"]) is False

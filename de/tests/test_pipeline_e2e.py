@@ -104,11 +104,16 @@ LAND_COVER = pd.DataFrame(
     {"municipality_code_6": ["431490"], "year": [2015], **{column: [10.0] for column in LAND_COVER_FEATURES}}
 )
 
+DEFORESTATION = pd.DataFrame(
+    {"municipality_code_6": ["431490"], "year": [2015], "deforestation_km2": [0.1], "deforestation_pct": [0.02]}
+)
+
 
 def _run(tmp_path):
     paths = {}
     for name, df in {"dim": DIM, "stations": STATIONS, "station_monthly": _station_monthly(tmp_path),
                      "population": POPULATION, "atlas": ATLAS, "land_cover": LAND_COVER,
+                     "deforestation": DEFORESTATION,
                      "SIH": SIH, "SINAN": SINAN}.items():
         path = tmp_path / "silver" / f"{name}.parquet"
         path.parent.mkdir(exist_ok=True)

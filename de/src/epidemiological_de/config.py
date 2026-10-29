@@ -163,6 +163,21 @@ MAPBIOMAS_FIRST_YEAR = 2015
 
 LAND_COVER_SILVER_PATH = f"gs://{BUCKET}/silver/mapbiomas_land_cover/"
 
+# --- PRODES/INPE (desmatamento) -----------------------------------
+
+PRODES_SOURCE = "prodes"
+
+# 🟢 INPE: arquivos que o dashboard do TerraBrasilis consome, um por
+# bioma, com o desmatamento anual (km²) já somado por município. Os 6
+# biomas cobrem o país sem sobreposição (o recorte "Amazônia Legal" se
+# sobrepõe a Amazônia e Cerrado, por isso fica de fora).
+PRODES_DASHBOARD_URL = "https://terrabrasilis.dpi.inpe.br/app/prodes/dashboard/deforestation/files"
+PRODES_BIOMES = ["amazon", "cerrado", "caatinga", "mata_atlantica", "pampa", "pantanal"]
+
+PRODES_FIRST_YEAR = 2015
+
+DEFORESTATION_SILVER_PATH = f"gs://{BUCKET}/silver/prodes_deforestation/"
+
 # --- Gold ----------------------------------------------------------
 
 # Um parquet por doença (part-NN.parquet); o BigQuery carrega a pasta.
