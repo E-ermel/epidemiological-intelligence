@@ -6,16 +6,16 @@ from epidemiological_de.mapbiomas import ingest, pipeline, transform
 
 RAW = pd.DataFrame(
     {
-        "ano": [2024, 2024],
-        "id_municipio": ["4314902", "5101837"],
-        "area_total": [49500.0, 0.0],
-        "area_forest": [13500.0, 0.0],
-        "area_natural_non_forest": [11650.0, 0.0],
-        "area_farming": [2400.0, 0.0],
-        "area_pasture": [0.0, 0.0],
-        "area_agriculture": [660.0, 0.0],
-        "area_urban": [19066.0, 0.0],
-        "area_water": [2649.0, 0.0],
+        "ano": [2024, 2024, 2024],
+        "id_municipio": ["4314902", "5101837", "4300001"],
+        "area_total": [49500.0, 0.0, 98000.0],
+        "area_forest": [13500.0, 0.0, 0.0],
+        "area_natural_non_forest": [11650.0, 0.0, 0.0],
+        "area_farming": [2400.0, 0.0, 0.0],
+        "area_pasture": [0.0, 0.0, 0.0],
+        "area_agriculture": [660.0, 0.0, 0.0],
+        "area_urban": [19066.0, 0.0, 0.0],
+        "area_water": [2649.0, 0.0, 98000.0],
     }
 )
 
@@ -35,6 +35,8 @@ def test_land_cover_is_share_of_mapped_area():
     assert land.loc["4314902", "municipality_code_6"] == "431490"
     # Área mapeada zero: percentual nulo, não divisão por zero.
     assert pd.isna(land.loc["5101837", "land_forest_pct"])
+    # Lagoa dos Patos: unidade de área do IBGE, não município.
+    assert "4300001" not in land.index
 
 
 class FakeBigQuery:

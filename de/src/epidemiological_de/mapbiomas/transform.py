@@ -4,6 +4,10 @@
 O percentual é sobre a área mapeada do município naquele ano (soma de
 todas as classes), não sobre a área oficial do IBGE: as duas diferem um
 pouco nas bordas, e o percentual fica consistente com a própria fonte.
+
+As lagoas dos Patos e Mirim (4300001 e 4300002) vêm na fonte como se
+fossem municípios, mas são unidades de área do IBGE: ficam de fora (as
+duas têm o mesmo código de 6 dígitos, 430000, e duplicariam o gold).
 """
 
 import pandas as pd
@@ -22,6 +26,8 @@ def build_land_cover(raw: pd.DataFrame) -> pd.DataFrame:
         }
     )
     df["municipality_code_6"] = df["municipality_code"].str[:6]
+    df = df[df["municipality_code"].str[2:6] != "0000"]
+    raw = raw.loc[df.index]
 
     total = raw["area_total"].where(raw["area_total"] > 0)
     for column, feature in zip(GROUPS, GOLD_FEATURES):
