@@ -2,9 +2,10 @@
 # Cloud Scheduler - execução mensal do pipeline
 #
 # Dispara o workflow epidemiological-pipeline todo mês (var.pipeline_schedule,
-# dia 10, depois da liberação mensal do DATASUS): ingestão -> silver ->
+# dia 1, às 3h): ingestão -> silver ->
 # gold -> alerta de surtos. Fontes que não mudaram viram no-op.
-# Para pausar: gcloud scheduler jobs pause epidemiological-pipeline-monthly --location=<região>
+# Começa pausado (var.pipeline_schedule_paused); para ativar, defina a
+# variável como false e rode terraform apply.
 # ============================================================
 
 resource "google_project_service" "cloud_scheduler_api" {
@@ -37,6 +38,7 @@ resource "google_cloud_scheduler_job" "pipeline_monthly" {
   region    = var.region
   schedule  = var.pipeline_schedule
   time_zone = "America/Sao_Paulo"
+  paused    = var.pipeline_schedule_paused
 
   # O workflow leva horas na primeira execução; o Scheduler só cria a
   # execução (a chamada retorna na hora), não espera ela terminar.

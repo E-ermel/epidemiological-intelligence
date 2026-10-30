@@ -3,8 +3,7 @@ import os
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "affable-alpha-506516-r7")
 BIGQUERY_DATASET = os.getenv("BIGQUERY_DATASET", "epidemiological_intelligence")
 
-# Gold nacional. A tabela anterior (epidemiology_climate_monthly, 27
-# municípios do RS) não é mais escrita e fica no dataset para rollback.
+# Gold nacional (substituiu a tabela só do RS, epidemiology_climate_monthly).
 BIGQUERY_GOLD_TABLE = os.getenv("BIGQUERY_GOLD_TABLE", "epidemiology_climate_monthly_br")
 
 GOLD_BIGQUERY_TABLE_ID = f"{GCP_PROJECT_ID}.{BIGQUERY_DATASET}.{BIGQUERY_GOLD_TABLE}"
