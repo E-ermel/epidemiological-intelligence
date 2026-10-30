@@ -68,6 +68,25 @@ def test_complete_last_month_stays_provisional_origin():
     assert origins[("SINAN", "provisorio")] == MONTHS[-1]
 
 
+def test_sinan_origins_are_per_disease_and_sih_origins_per_source():
+    cases, _ = make_gold(sinan_partial_last=False)
+    # Outra doença do SINAN, cujo arquivo para em mar/2021 (zeros depois),
+    # e uma do SIH sem casos nos últimos meses (zero real, mesmos arquivos).
+    lepto = cases[cases["disease"] == "LEPTOSPIROSE"]
+    stopped = lepto.assign(disease="ACIDENTE POR ESCORPIÃO", cases=np.where(lepto["ds"] <= "2021-03-01", 6.0, 0.0))
+    asma = cases[cases["disease"] == "ASMA"]
+    rare = asma.assign(disease="OROPOUCHE", cases=asma["cases"].where(asma["ds"] <= "2020-12-01", 0.0))
+    cases = pd.concat([cases, stopped, rare], ignore_index=True)
+
+    origins = prepare.disease_origins(cases).set_index(["disease", "origin_type"])["origin"]
+
+    assert origins[("LEPTOSPIROSE", "provisorio")] == MONTHS[-1]
+    assert origins[("ACIDENTE POR ESCORPIÃO", "provisorio")] == pd.Timestamp("2021-03-01")
+    assert origins[("ACIDENTE POR ESCORPIÃO", "fechado")] == pd.Timestamp("2021-01-01")
+    assert origins[("OROPOUCHE", "provisorio")] == origins[("ASMA", "provisorio")]
+    assert origins[("OROPOUCHE", "fechado")] == origins[("ASMA", "fechado")]
+
+
 def test_eligible_series_need_one_case_per_month():
     cases, _ = make_gold()
     eligible = prepare.eligible_municipal_series(cases, prepare.disease_origins(cases))

@@ -54,6 +54,9 @@ ELIGIBILITY_MONTHS = 60
 # do SINAN cobre o ano preliminar inteiro, que já vem quase completo).
 PARTIAL_MONTH_SHARE = 0.5
 SINAN_CLOSED_LAG_MONTHS = 2
+# Fontes com um arquivo por agravo, cada um com sua data de atualização:
+# a origem é calculada por doença, não pela fonte inteira.
+ORIGIN_BY_DISEASE_SOURCES = ["SINAN"]
 ORIGIN_TYPES = ["fechado", "provisorio"]
 
 # --- Corte e métricas do teste (estudo, 2024-2025) ------------------

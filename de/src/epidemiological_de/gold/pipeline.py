@@ -14,10 +14,17 @@ from epidemiological_de import config, storage, warehouse
 from epidemiological_de.atlas.transform import latest_census
 from epidemiological_de.gold import transform
 
-# (fonte, silver, coluna de contagem)
+# (fonte, silver, coluna de contagem, meses por doença)
+#
+# Meses por doença: até onde vai a grade de cada doença. No SIH todas
+# saem dos mesmos arquivos mensais, então a grade vai até o último mês
+# da fonte (um zero de Oropouche é zero de verdade). No SINAN cada agravo
+# tem o próprio arquivo, atualizado em datas diferentes (a leptospirose
+# pode parar meses antes dos peçonhentos); a grade de cada doença vai só
+# até o último mês dela, sem zeros onde o dado ainda não existe.
 SOURCES = [
-    ("SIH", config.SIH_SILVER_PATH, "hospitalizations"),
-    ("SINAN", config.SINAN_SILVER_PATH, "cases"),
+    ("SIH", config.SIH_SILVER_PATH, "hospitalizations", False),
+    ("SINAN", config.SINAN_SILVER_PATH, "cases", True),
 ]
 
 
@@ -55,7 +62,7 @@ def run(
         "land_cover": config.LAND_COVER_SILVER_PATH,
         "deforestation": config.DEFORESTATION_SILVER_PATH,
         "sanitation": config.SANITATION_SILVER_PATH,
-        **{source: path for source, path, _ in SOURCES},
+        **{source: path for source, path, _, _ in SOURCES},
         **(silver_paths or {}),
     }
     gold_path = (gold_path or config.GOLD_PATH).rstrip("/")
@@ -85,17 +92,22 @@ def run(
     storage.clear_path(gold_path)
     total_rows, part = 0, 0
 
-    for source, _, count_column in SOURCES:
+    for source, _, count_column, months_per_disease in SOURCES:
         silver = pd.read_parquet(paths[source])
         counts = transform.case_counts(silver, count_column)
-        months = transform.month_range(silver, config.GOLD_FIRST_YEAR)
+        source_months = transform.month_range(silver, config.GOLD_FIRST_YEAR)
         provisional = transform.provisional_months(silver)
 
         report_unmatched(source, counts, dim)
         if part == 0:
-            report_climate(climate, dim, len(months))
+            report_climate(climate, dim, len(source_months))
 
         for disease in sorted(silver["disease"].unique()):
+            months = (
+                transform.month_range(silver[silver["disease"] == disease], config.GOLD_FIRST_YEAR)
+                if months_per_disease
+                else source_months
+            )
             gold = transform.build_disease_gold(
                 disease, source, counts, months, provisional, dim, climate, yearly_features, static_features
             )
@@ -103,7 +115,11 @@ def run(
             with fsspec.open(f"{gold_path}/part-{part:02d}.parquet", "wb", auto_mkdir=True) as f:
                 gold.to_parquet(f, index=False)
 
-            print(f"{disease} ({source}): {len(gold)} linhas, {gold['cases'].sum()} casos")
+            last = months.iloc[-1]
+            print(
+                f"{disease} ({source}): {len(gold)} linhas, {gold['cases'].sum()} casos, "
+                f"até {int(last['month']):02d}/{int(last['year'])}"
+            )
             total_rows += len(gold)
             part += 1
 

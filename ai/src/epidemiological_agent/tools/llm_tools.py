@@ -56,6 +56,55 @@ def _date_range_out_of_bounds_response(start_date: str | None) -> str | None:
         ),
     )
 
+# Valores da coluna `disease` do gold.
+DISEASES = (
+    "ACIDENTE POR ABELHA",
+    "ACIDENTE POR ARANHA",
+    "ACIDENTE POR ESCORPIÃO",
+    "ACIDENTE POR LAGARTA",
+    "ACIDENTE POR OUTRO ANIMAL PEÇONHENTO",
+    "ACIDENTE POR SERPENTE",
+    "ASMA",
+    "BRONQUITE AGUDA",
+    "BRONQUITE CRÔNICA",
+    "INFARTO AGUDO DO MIOCÁRDIO",
+    "INSUFICIÊNCIA CARDÍACA",
+    "LEPTOSPIROSE",
+    "OROPOUCHE",
+)
+
+
+def resolve_disease(name: str) -> tuple[str | None, str | None]:
+    """
+    Gold disease name for what the model passed, ignoring case and
+    accents and accepting a part of the name ("escorpiao", "acidentes
+    por escorpião", "infarto"). Returns (name, None), or (None, message)
+    when nothing or more than one disease matches -- an exact-match
+    filter would silently return no rows, which the model reads as
+    "zero cases".
+    """
+
+    target = gold_queries.normalize_name(name)
+    by_key = {gold_queries.normalize_name(d): d for d in DISEASES}
+
+    if target in by_key:
+        return by_key[target], None
+
+    matches = [
+        disease
+        for key, disease in by_key.items()
+        if key.removeprefix("ACIDENTE POR ") in target or target in key
+    ]
+
+    if len(matches) == 1:
+        return matches[0], None
+
+    if matches:
+        return None, f"'{name}' matches more than one disease: {', '.join(matches)}. Choose one."
+
+    return None, f"Unknown disease '{name}'. Valid names: {', '.join(DISEASES)}."
+
+
 @tool
 def epidemiological_data_tool(
     disease: str,
@@ -82,6 +131,11 @@ def epidemiological_data_tool(
     Maria exists in RS and RN). Without `municipality`, records come
     aggregated per month for the state (or for Brazil, without state).
     """
+    disease, problem = resolve_disease(disease)
+
+    if problem is not None:
+        return problem
+
     out_of_bounds = _date_range_out_of_bounds_response(start_date)
 
     if out_of_bounds is not None:
@@ -134,6 +188,12 @@ def outbreak_alerts_tool(
 
     if origin_type not in alert_queries.ORIGIN_TYPES:
         origin_type = "fechado"
+
+    if disease:
+        disease, problem = resolve_disease(disease)
+
+        if problem is not None:
+            return problem
 
     municipality_code = None
     if municipality:
@@ -242,6 +302,11 @@ def total_cases_tool(
     disambiguates `municipality` names that exist in several states.
     """
 
+    disease, problem = resolve_disease(disease)
+
+    if problem is not None:
+        return problem
+
     out_of_bounds = _date_range_out_of_bounds_response(start_date)
 
     if out_of_bounds is not None:
@@ -299,6 +364,12 @@ def climate_summary_tool(
     DO NOT use this tool for case counts; use total_cases_tool or
     epidemiological_data_tool instead.
     """
+
+    if disease:
+        disease, problem = resolve_disease(disease)
+
+        if problem is not None:
+            return problem
 
     out_of_bounds = _date_range_out_of_bounds_response(start_date)
 

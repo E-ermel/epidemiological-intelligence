@@ -17,26 +17,31 @@ from epidemiological_intelligence.alert import config
 # ---------------------------------------------------------------------
 
 
+def _origin_months(df: pd.DataFrame, source: str) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """(fechada, provisória) pela regra da completude, a partir dos casos em `df`."""
+
+    monthly = df.groupby("ds").agg(total=("cases", "sum"), provisional=("is_provisional", "any"))
+    monthly = monthly[monthly["total"] > 0].sort_index()
+    last_with_data = monthly.index[-1]
+
+    provisional = last_with_data
+    if len(monthly) > 1 and monthly["total"].iloc[-1] < config.PARTIAL_MONTH_SHARE * monthly["total"].iloc[-2]:
+        provisional = monthly.index[-2]  # último mês ainda em andamento
+
+    if source == "SINAN":
+        closed = last_with_data - pd.DateOffset(months=config.SINAN_CLOSED_LAG_MONTHS)
+    else:
+        settled = monthly.index[~monthly["provisional"]]
+        closed = settled.max() if len(settled) else monthly.index[0]
+    return min(closed, provisional), provisional
+
+
 def source_origins(cases: pd.DataFrame) -> pd.DataFrame:
     """Origem fechada e provisória de cada fonte (SIH, SINAN)."""
 
     rows = []
     for source, df in cases.groupby("source", observed=True):
-        monthly = df.groupby("ds").agg(total=("cases", "sum"), provisional=("is_provisional", "any"))
-        monthly = monthly[monthly["total"] > 0].sort_index()
-        last_with_data = monthly.index[-1]
-
-        provisional = last_with_data
-        if len(monthly) > 1 and monthly["total"].iloc[-1] < config.PARTIAL_MONTH_SHARE * monthly["total"].iloc[-2]:
-            provisional = monthly.index[-2]  # último mês ainda em andamento
-
-        if source == "SINAN":
-            closed = last_with_data - pd.DateOffset(months=config.SINAN_CLOSED_LAG_MONTHS)
-        else:
-            settled = monthly.index[~monthly["provisional"]]
-            closed = settled.max() if len(settled) else monthly.index[0]
-        closed = min(closed, provisional)
-
+        closed, provisional = _origin_months(df, str(source))
         rows += [
             {"source": source, "origin_type": "fechado", "origin": closed},
             {"source": source, "origin_type": "provisorio", "origin": provisional},
@@ -45,10 +50,26 @@ def source_origins(cases: pd.DataFrame) -> pd.DataFrame:
 
 
 def disease_origins(cases: pd.DataFrame, override: pd.Timestamp | None = None) -> pd.DataFrame:
-    """Origem de cada doença × tipo; `override` força a mesma data para todas (validação)."""
+    """
+    Origem de cada doença × tipo; `override` força a mesma data para todas (validação).
+
+    Nas fontes de ORIGIN_BY_DISEASE_SOURCES (SINAN: um arquivo por agravo,
+    atualizado em datas diferentes) a origem sai dos casos da própria
+    doença. Nas demais (SIH: os mesmos arquivos mensais para todas), sai
+    da fonte inteira -- por doença, um mês sem internação de Oropouche
+    pareceria um mês sem dado.
+    """
 
     diseases = cases[["disease", "source"]].drop_duplicates().astype(str)
     origins = diseases.merge(source_origins(cases).astype({"source": str}), on="source")
+
+    by_disease = cases[cases["source"].astype(str).isin(config.ORIGIN_BY_DISEASE_SOURCES)]
+    for (disease, source), df in by_disease.groupby(["disease", "source"], observed=True):
+        closed, provisional = _origin_months(df, str(source))
+        row = origins["disease"] == str(disease)
+        origins.loc[row & (origins["origin_type"] == "fechado"), "origin"] = closed
+        origins.loc[row & (origins["origin_type"] == "provisorio"), "origin"] = provisional
+
     if override is not None:
         origins["origin"] = override
     return origins.reset_index(drop=True)

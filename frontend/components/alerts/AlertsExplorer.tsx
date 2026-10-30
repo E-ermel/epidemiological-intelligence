@@ -117,11 +117,13 @@ export function AlertsExplorer({ model, initialStates, initialRows }: AlertsExpl
     setIsLoading(true);
     setError(false);
 
+    // Com uma UF selecionada: a UF e seus municípios em alerta numa lista só,
+    // da maior probabilidade para a menor.
     const tableRows = filters.selectedState
       ? Promise.all([
           getAlerts({ ...common, level: "uf", state: filters.selectedState }),
           getAlerts({ ...common, level: "municipio", state: filters.selectedState, onlyAlerts: true, limit: 300 }),
-        ]).then(([uf, municipalities]) => [...uf, ...municipalities])
+        ]).then(([uf, municipalities]) => [...uf, ...municipalities].sort((a, b) => b.probability - a.probability))
       : getAlerts({ ...common, level: "uf", onlyAlerts: true, limit: 300 });
 
     Promise.all([getAlertStates(common.originType, common.horizon, common.disease), tableRows])
