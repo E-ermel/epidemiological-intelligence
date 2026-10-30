@@ -71,7 +71,13 @@ variable "alert_artifact_prefix" {
 }
 
 variable "pipeline_schedule" {
-  description = "Cron (America/Sao_Paulo) da execução automática do pipeline; dia 10, depois da liberação mensal do DATASUS"
+  description = "Cron (America/Sao_Paulo) da execução automática do pipeline; dia 1, às 3h"
   type        = string
-  default     = "0 6 10 * *"
+  default     = "0 3 1 * *"
+}
+
+variable "pipeline_schedule_paused" {
+  description = "Deixa o agendamento configurado mas sem disparar; false ativa a execução mensal"
+  type        = bool
+  default     = true
 }
