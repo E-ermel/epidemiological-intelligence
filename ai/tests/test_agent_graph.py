@@ -1,10 +1,19 @@
 import pandas as pd
+import pytest
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, HumanMessage
 
 from epidemiological_agent.graph import nodes
 from epidemiological_agent.graph.graph import agent_graph
+from epidemiological_agent.prompts.system_prompt import build_system_prompt
 from epidemiological_agent.tools import llm_tools
+
+
+@pytest.fixture(autouse=True)
+def _data_coverage(monkeypatch):
+    # agent_node reads the data coverage from BigQuery for the prompt.
+    monkeypatch.setattr(nodes, "_coverage_cache", {})
+    monkeypatch.setattr(nodes, "get_max_reference_date", lambda: pd.Timestamp("2026-08-01"))
 
 
 def _raise(exc):
@@ -19,8 +28,10 @@ class _FakeLLM:
     # patching, so tests swap the whole nodes.llm_with_tools reference.
     def __init__(self, responses):
         self._responses = list(responses)
+        self.calls = []
 
-    def invoke(self, *args, **kwargs):
+    def invoke(self, messages, *args, **kwargs):
+        self.calls.append(messages)
         return self._responses.pop(0)
 
 
@@ -283,3 +294,36 @@ def test_agent_answers_directly_without_tool_call(monkeypatch):
         "Olá! Como posso ajudar com dados epidemiológicos?"
     )
     assert len(result["messages"]) == 2
+
+
+def test_agent_prompt_states_the_real_data_coverage(monkeypatch):
+    fake = _fake_llm([AIMessage(content="ok")])
+    monkeypatch.setattr(nodes, "llm_with_tools", fake)
+
+    agent_graph.invoke(
+        {"messages": [HumanMessage(content="Até quando vão os dados?")]},
+        config=_thread_config("coverage"),
+    )
+
+    system_prompt = fake.calls[0][0]["content"]
+    assert "de janeiro de 2015 até agosto de 2026" in system_prompt
+    assert "end_date = AAAA-12-31" in system_prompt
+
+
+def test_agent_prompt_does_not_claim_an_end_date_when_coverage_fails(monkeypatch):
+    monkeypatch.setattr(nodes, "get_max_reference_date", _raise(RuntimeError("bigquery down")))
+    fake = _fake_llm([AIMessage(content="ok")])
+    monkeypatch.setattr(nodes, "llm_with_tools", fake)
+
+    agent_graph.invoke(
+        {"messages": [HumanMessage(content="Oi")]},
+        config=_thread_config("coverage-failure"),
+    )
+
+    assert "não afirme uma data final" in fake.calls[0][0]["content"]
+
+
+def test_build_system_prompt_names_the_last_month():
+    from datetime import date
+
+    assert "até março de 2025" in build_system_prompt(date(2025, 3, 1))

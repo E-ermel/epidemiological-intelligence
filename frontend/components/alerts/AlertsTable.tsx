@@ -17,8 +17,9 @@ function observed(row: AlertRecord): string {
  * One row per series × target month: outbreak probability (with the
  * alert cutoff as a tick on the bar), expected cases (median and 80%
  * range) against the outbreak limit, and cases already reported.
+ * Scrolling is left to the parent; the header sticks to its top.
  */
-export function AlertsTable({ rows, emptyMessage }: { rows: AlertRecord[]; emptyMessage: string }) {
+export function AlertsTable({ rows, emptyMessage, color }: { rows: AlertRecord[]; emptyMessage: string; color: string }) {
   if (rows.length === 0) {
     return <p className="py-8 text-center text-sm text-muted">{emptyMessage}</p>;
   }
@@ -26,9 +27,9 @@ export function AlertsTable({ rows, emptyMessage }: { rows: AlertRecord[]; empty
   const hasProvisional = rows.some((row) => row.targetProvisional && row.observedCases !== null);
 
   return (
-    <div className="overflow-x-auto">
+    <div>
       <table className="w-full min-w-[720px] text-left text-xs">
-        <thead className="border-b border-border text-muted">
+        <thead className="sticky top-0 z-10 bg-surface text-muted shadow-[inset_0_-1px_0_var(--color-border)]">
           <tr>
             <th className="py-2 pr-3 font-medium">Doença</th>
             <th className="py-2 pr-3 font-medium">Local</th>
@@ -48,13 +49,17 @@ export function AlertsTable({ rows, emptyMessage }: { rows: AlertRecord[]; empty
             >
               <td className="py-2 pr-3 text-foreground">{DISEASE_LABELS[row.disease as DiseaseCode] ?? row.disease}</td>
               <td className="py-2 pr-3 text-foreground">{place(row)}</td>
-              <td className="py-2 pr-3 text-muted">{formatMonth(row.targetMonth)}</td>
+              <td className="whitespace-nowrap py-2 pr-3 text-muted">{formatMonth(row.targetMonth)}</td>
               <td className="py-2 pr-3">
                 <div className="flex items-center gap-2">
                   <div className="relative h-1.5 w-24 rounded-full bg-surface-muted">
                     <div
-                      className="h-1.5 rounded-full bg-danger"
-                      style={{ width: `${Math.round(row.probability * 100)}%`, opacity: row.alert ? 0.85 : 0.35 }}
+                      className="h-1.5 rounded-full"
+                      style={{
+                        width: `${Math.round(row.probability * 100)}%`,
+                        background: color,
+                        opacity: row.alert ? 0.85 : 0.35,
+                      }}
                     />
                     <div
                       className="absolute -top-0.5 h-2.5 w-px bg-foreground"

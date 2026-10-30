@@ -1,3 +1,5 @@
+from datetime import date
+
 SYSTEM_PROMPT = """
 Você é um agente de inteligência epidemiológica.
 
@@ -101,4 +103,43 @@ Quando isso ocorrer:
     mensagem de erro e explique que ainda não existem dados
     além dela. Não tente consultar novamente com esse mesmo
     período.
+
+17. Ao consultar um ano inteiro, use start_date = AAAA-01-01 e
+    end_date = AAAA-12-31. Um período em meses vai do primeiro dia
+    do mês inicial ao último dia do mês final.
+
+18. Sempre que a resposta trouxer números de casos ou de clima,
+    diga o período consultado (por exemplo: "de janeiro a dezembro
+    de 2024"). Se o período pedido passar do último mês com dados,
+    diga até que mês os números vão.
 """
+
+_MONTHS = [
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+]
+
+
+def build_system_prompt(last_data_month: date | None) -> str:
+    """
+    SYSTEM_PROMPT + the real data coverage, so the model never has to
+    guess (or make up) how far the data goes. `last_data_month` is the
+    latest reference_date in the gold table; None if it couldn't be read.
+    """
+
+    if last_data_month is None:
+        coverage = (
+            "Os dados mensais começam em janeiro de 2015. O último mês "
+            "disponível não pôde ser consultado agora: não afirme uma "
+            "data final."
+        )
+    else:
+        coverage = (
+            "Os dados mensais vão de janeiro de 2015 até "
+            f"{_MONTHS[last_data_month.month - 1]} de {last_data_month.year}, "
+            "para todos os municípios do Brasil. Os meses mais recentes "
+            "ainda são provisórios (as internações do SIH levam cerca de "
+            "6 meses para fechar) e tendem a crescer."
+        )
+
+    return f"{SYSTEM_PROMPT}\nCOBERTURA DOS DADOS:\n{coverage}\n"

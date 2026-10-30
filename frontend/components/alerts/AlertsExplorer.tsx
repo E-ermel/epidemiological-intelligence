@@ -1,26 +1,48 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { AlertOriginType, AlertRecord, AlertStateSummary } from "@/types/alert";
+import type { AlertModelInfo, AlertOriginType, AlertRecord, AlertStateSummary } from "@/types/alert";
+import { originLabel } from "@/components/alerts/AlertModelCard";
 import { AlertStateMap } from "@/components/alerts/AlertStateMap";
 import { AlertsTable } from "@/components/alerts/AlertsTable";
 import { Card } from "@/components/ui/Card";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { getAlerts, getAlertStates } from "@/services/api";
 import { DISEASES, STATES } from "@/lib/constants";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 
-const ORIGINS: { value: AlertOriginType; label: string; hint: string }[] = [
-  { value: "fechado", label: "Mês fechado", hint: "Parte do último mês com dados completos (mais confiável)." },
-  { value: "provisorio", label: "Provisório", hint: "Parte do último mês disponível, com dados ainda incompletos." },
+// Cada origem tem sua cor (mapa e barras), para não confundir as duas.
+const ORIGINS: { value: AlertOriginType; label: string; hint: string; color: string }[] = [
+  {
+    value: "fechado",
+    label: "Mês fechado",
+    hint: "Parte do último mês com dados completos (mais confiável).",
+    color: "var(--color-danger)",
+  },
+  {
+    value: "provisorio",
+    label: "Provisório",
+    hint: "Parte do último mês disponível, com dados ainda incompletos.",
+    color: "var(--color-warning)",
+  },
 ];
 const HORIZONS = [1, 2, 3];
 // Oropouche não tem alerta (poucos casos para um canal endêmico).
 const ALERT_DISEASES = DISEASES.filter((d) => d.code !== "OROPOUCHE");
 
 interface AlertsExplorerProps {
+  model: AlertModelInfo;
   initialStates: AlertStateSummary[];
   initialRows: AlertRecord[];
+}
+
+function Stat({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl bg-surface-muted px-4 py-2.5">
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="mt-0.5 font-semibold text-foreground">{children}</dd>
+    </div>
+  );
 }
 
 function Segmented<T extends string | number>({
@@ -57,7 +79,7 @@ function Segmented<T extends string | number>({
  * across Brazil; clicking a state lists that state's alert and its
  * municipalities in alert.
  */
-export function AlertsExplorer({ initialStates, initialRows }: AlertsExplorerProps) {
+export function AlertsExplorer({ model, initialStates, initialRows }: AlertsExplorerProps) {
   const [originType, setOriginType] = useState<AlertOriginType>("fechado");
   const [horizon, setHorizon] = useState(1);
   const [disease, setDisease] = useState("");
@@ -117,39 +139,64 @@ export function AlertsExplorer({ initialStates, initialRows }: AlertsExplorerPro
   }
 
   const stateName = STATES.find((s) => s.code === selectedState)?.name;
-  const origin = ORIGINS.find((o) => o.value === originType);
+  const origin = ORIGINS.find((o) => o.value === originType) ?? ORIGINS[0];
+  const statesInAlert = states.filter((s) => s.stateAlerts > 0).length;
+  const municipalitiesInAlert = states.reduce((total, s) => total + s.municipalityAlerts, 0);
 
   return (
     <div className="flex flex-col gap-4">
-      <Card className="flex flex-wrap items-end gap-x-6 gap-y-3">
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted">Ponto de partida</span>
-          <Segmented options={ORIGINS} value={originType} onChange={(value) => update({ originType: value })} />
+      <Card className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted">Ponto de partida</span>
+              <Segmented options={ORIGINS} value={originType} onChange={(value) => update({ originType: value })} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted">Previsão para</span>
+              <Segmented
+                options={HORIZONS.map((h) => ({ value: h, label: h === 1 ? "1 mês à frente" : `${h} meses` }))}
+                value={horizon}
+                onChange={(value) => update({ horizon: value })}
+              />
+            </div>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted">Doença</span>
+              <select
+                value={disease}
+                onChange={(event) => update({ disease: event.target.value })}
+                className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-foreground"
+              >
+                <option value="">Todas</option>
+                {ALERT_DISEASES.map((d) => (
+                  <option key={d.code} value={d.code}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="flex items-center gap-2 text-xs text-muted-light">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: origin.color }} />
+            {origin.hint}
+          </p>
         </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted">Previsão para</span>
-          <Segmented
-            options={HORIZONS.map((h) => ({ value: h, label: h === 1 ? "1 mês à frente" : `${h} meses` }))}
-            value={horizon}
-            onChange={(value) => update({ horizon: value })}
-          />
-        </div>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted">Doença</span>
-          <select
-            value={disease}
-            onChange={(event) => update({ disease: event.target.value })}
-            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-foreground"
-          >
-            <option value="">Todas</option>
-            {ALERT_DISEASES.map((d) => (
-              <option key={d.code} value={d.code}>
-                {d.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="basis-full text-xs text-muted-light">{origin?.hint}</p>
+
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-[auto_auto_minmax(0,1fr)] xl:shrink-0">
+          <Stat label="UFs em alerta">{formatNumber(statesInAlert)}</Stat>
+          <Stat label="Municípios em alerta">{formatNumber(municipalitiesInAlert)}</Stat>
+          <div className="col-span-2 sm:col-span-1">
+            <Stat label="Parte dos dados de">
+              {originLabel(model, originType)
+                .split(" · ")
+                .map((part) => (
+                  <span key={part} className="block text-xs font-medium">
+                    {part}
+                  </span>
+                ))}
+            </Stat>
+          </div>
+        </dl>
       </Card>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
@@ -159,10 +206,12 @@ export function AlertsExplorer({ initialStates, initialRows }: AlertsExplorerPro
             states={states}
             selectedState={selectedState}
             onSelectState={(state) => update({ selectedState: state ?? null })}
+            color={origin.color}
           />
         </Card>
 
-        <Card className="lg:col-span-3">
+        {/* contain:size: a lista não define a altura da linha; ela ocupa a altura do card do mapa e rola. */}
+        <Card className="flex flex-col lg:col-span-3 lg:[contain:size]">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-foreground">
               {selectedState ? `Alertas em ${stateName}` : "UFs em alerta"}
@@ -177,20 +226,23 @@ export function AlertsExplorer({ initialStates, initialRows }: AlertsExplorerPro
               </button>
             )}
           </div>
-          {isLoading ? (
-            <LoadingState label="Carregando alertas..." />
-          ) : error ? (
-            <p className="py-8 text-center text-sm text-muted">Não foi possível carregar os alertas.</p>
-          ) : (
-            <AlertsTable
-              rows={rows}
-              emptyMessage={
-                selectedState
-                  ? "Sem previsão para esta UF com estes filtros."
-                  : "Nenhuma UF em alerta com estes filtros."
-              }
-            />
-          )}
+          <div className="max-h-[28rem] min-h-0 flex-1 overflow-auto lg:max-h-none">
+            {isLoading ? (
+              <LoadingState label="Carregando alertas..." />
+            ) : error ? (
+              <p className="py-8 text-center text-sm text-muted">Não foi possível carregar os alertas.</p>
+            ) : (
+              <AlertsTable
+                rows={rows}
+                color={origin.color}
+                emptyMessage={
+                  selectedState
+                    ? "Sem previsão para esta UF com estes filtros."
+                    : "Nenhuma UF em alerta com estes filtros."
+                }
+              />
+            )}
+          </div>
           {!selectedState && !isLoading && (
             <p className="mt-3 text-xs text-muted-light">Clique em uma UF no mapa para ver os municípios em alerta.</p>
           )}
