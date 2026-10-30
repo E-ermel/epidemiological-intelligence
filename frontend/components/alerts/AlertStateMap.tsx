@@ -11,8 +11,9 @@ import { formatProbability } from "@/lib/utils";
 /**
  * Choropleth of the outbreak alert by state: each state is shaded by the
  * highest outbreak probability among its diseases (or the selected one),
- * in one hue from light to dark. States with at least one disease above
- * the alert cutoff get an outline. Clicking a state selects it.
+ * in one hue from light to dark (`color`, set per origin). The 30% bin
+ * edge matches the state-level alert cutoff, so the shade alone shows
+ * which states are in alert. Clicking a state selects it and dims the rest.
  */
 
 const VIEWBOX_WIDTH = 460;
@@ -41,9 +42,11 @@ interface AlertStateMapProps {
   states: AlertStateSummary[];
   selectedState?: string;
   onSelectState: (state: string | undefined) => void;
+  /** CSS color of the scale: red for the closed origin, orange for the provisional one. */
+  color: string;
 }
 
-export function AlertStateMap({ states, selectedState, onSelectState }: AlertStateMapProps) {
+export function AlertStateMap({ states, selectedState, onSelectState, color }: AlertStateMapProps) {
   const [hovered, setHovered] = useState<{ summary: AlertStateSummary; x: number; y: number } | null>(null);
   const byState = useMemo(() => new Map(states.map((s) => [s.state, s])), [states]);
 
@@ -57,24 +60,23 @@ export function AlertStateMap({ states, selectedState, onSelectState }: AlertSta
           role="img"
           aria-label="Mapa do Brasil com a probabilidade de surto por UF"
         >
-          {STATES_GEOJSON.features.map((feature: StateFeature) => {
+          {sortedFeatures(selectedState).map((feature: StateFeature) => {
             const uf = IBGE_CODAREA_TO_UF[feature.properties.codarea];
             const summary = uf ? byState.get(uf) : undefined;
             const opacity = shade(summary?.maxProbability ?? null);
-            const inAlert = (summary?.stateAlerts ?? 0) > 0;
             const isSelected = uf !== undefined && uf === selectedState;
+            // Com uma UF selecionada, as outras ficam esmaecidas.
+            const dimmed = selectedState !== undefined && !isSelected;
             const [cx, cy] = PATH.centroid(feature);
 
             return (
               <path
                 key={feature.properties.codarea}
                 d={PATH(feature) ?? undefined}
-                fill={opacity === null ? "var(--color-border-strong)" : "var(--color-danger)"}
-                fillOpacity={opacity ?? 0.35}
-                stroke={
-                  isSelected ? "var(--color-primary-700)" : inAlert ? "var(--color-foreground)" : "var(--color-surface)"
-                }
-                strokeWidth={isSelected ? 2.5 : inAlert ? 1.4 : 1}
+                fill={opacity === null ? "var(--color-border-strong)" : color}
+                fillOpacity={(opacity ?? 0.35) * (dimmed ? 0.4 : 1)}
+                stroke={isSelected ? color : "var(--color-surface)"}
+                strokeWidth={isSelected ? 2.5 : 1}
                 className="cursor-pointer transition-opacity hover:opacity-80"
                 onMouseEnter={() => summary && setHovered({ summary, x: cx, y: cy })}
                 onMouseLeave={() => setHovered(null)}
@@ -100,18 +102,21 @@ export function AlertStateMap({ states, selectedState, onSelectState }: AlertSta
           <span key={bin.label} className="flex items-center gap-1.5">
             <span
               className="h-3 w-5 rounded-sm"
-              style={{ background: "var(--color-danger)", opacity: bin.opacity }}
+              style={{ background: color, opacity: bin.opacity }}
             />
             {bin.label}
           </span>
         ))}
-        <span className="flex items-center gap-1.5">
-          <span className="h-3 w-5 rounded-sm border-[1.5px] border-foreground" />
-          UF com doença em alerta
-        </span>
+        <span className="basis-full text-muted-light">A partir de 30% a UF está em alerta (corte do modelo).</span>
       </div>
     </div>
   );
+}
+
+/** The selected state is drawn last, so neighbors' white borders don't cover its outline. */
+function sortedFeatures(selectedState?: string): StateFeature[] {
+  const isSelected = (feature: StateFeature) => IBGE_CODAREA_TO_UF[feature.properties.codarea] === selectedState;
+  return [...STATES_GEOJSON.features].sort((a, b) => Number(isSelected(a)) - Number(isSelected(b)));
 }
 
 function describe(summary: AlertStateSummary): string {

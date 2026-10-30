@@ -7,7 +7,7 @@ import { formatDate, formatMonth } from "@/lib/utils";
 const LEVEL_LABELS: Record<AlertLevel, string> = { uf: "Por UF", municipio: "Por município" };
 
 /** "mar. de 2026 (internações) · jul. de 2026 (notificações)" for one origin type. */
-function originLabel(info: AlertModelInfo, originType: AlertOriginType): string {
+export function originLabel(info: AlertModelInfo, originType: AlertOriginType): string {
   const months = new Map<string, string>();
   for (const origin of info.origins.filter((o) => o.originType === originType)) {
     const group = HOSPITALIZATION_DISEASES.includes(origin.disease as DiseaseCode) ? "internações" : "notificações";

@@ -43,7 +43,7 @@ export default async function AlertsPage() {
         <ErrorState description="Tente novamente em alguns instantes." />
       ) : (
         <>
-          <AlertsExplorer initialStates={result.states} initialRows={result.rows} />
+          <AlertsExplorer model={result.model} initialStates={result.states} initialRows={result.rows} />
           <AlertModelCard info={result.model} />
         </>
       )}
