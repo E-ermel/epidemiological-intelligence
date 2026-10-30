@@ -114,12 +114,12 @@ SANITATION = pd.DataFrame(
 )
 
 
-def _run(tmp_path):
+def _run(tmp_path, sinan=SINAN):
     paths = {}
     for name, df in {"dim": DIM, "stations": STATIONS, "station_monthly": _station_monthly(tmp_path),
                      "population": POPULATION, "atlas": ATLAS, "land_cover": LAND_COVER,
                      "deforestation": DEFORESTATION, "sanitation": SANITATION,
-                     "SIH": SIH, "SINAN": SINAN}.items():
+                     "SIH": SIH, "SINAN": sinan}.items():
         path = tmp_path / "silver" / f"{name}.parquet"
         path.parent.mkdir(exist_ok=True)
         df.to_parquet(path, index=False)
@@ -137,6 +137,19 @@ def test_gold_pipeline_builds_full_grid_for_every_disease(tmp_path):
     assert rows == len(gold) == 2 * 2 * 2 + 2 * 1 * 1
     assert set(gold["source"]) == {"SIH", "SINAN"}
     assert not gold.duplicated(["disease", "municipality_code", "year", "month"]).any()
+
+
+def test_gold_sinan_grid_stops_at_each_disease_last_month(tmp_path):
+    # Arquivos do SINAN por agravo: os peçonhentos vão até mar/2015 e a
+    # leptospirose para em jan/2015 -- sem zeros de lepto em fev e mar.
+    scorpion = SINAN.assign(disease="ACIDENTE POR ESCORPIÃO", month=3)
+    _, gold = _run(tmp_path, sinan=pd.concat([SINAN, scorpion], ignore_index=True))
+
+    last_month = gold.groupby("disease")["month"].max()
+    assert last_month["LEPTOSPIROSE"] == 1
+    assert last_month["ACIDENTE POR ESCORPIÃO"] == 3
+    # SIH segue a fonte: Oropouche (caso só em jan) vai até fev, como a asma.
+    assert last_month["OROPOUCHE"] == last_month["ASMA"] == 2
 
 
 def test_gold_pipeline_keeps_counts_and_climate(tmp_path):

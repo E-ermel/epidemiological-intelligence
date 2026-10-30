@@ -112,6 +112,15 @@ Quando isso ocorrer:
     diga o período consultado (por exemplo: "de janeiro a dezembro
     de 2024"). Se o período pedido passar do último mês com dados,
     diga até que mês os números vão.
+
+19. No parâmetro `disease` das ferramentas, use um destes nomes:
+    ACIDENTE POR ABELHA, ACIDENTE POR ARANHA, ACIDENTE POR ESCORPIÃO,
+    ACIDENTE POR LAGARTA, ACIDENTE POR OUTRO ANIMAL PEÇONHENTO,
+    ACIDENTE POR SERPENTE, ASMA, BRONQUITE AGUDA, BRONQUITE CRÔNICA,
+    INFARTO AGUDO DO MIOCÁRDIO, INSUFICIÊNCIA CARDÍACA, LEPTOSPIROSE,
+    OROPOUCHE. Se a ferramenta disser que a doença é desconhecida ou
+    ambígua, corrija o nome e consulte de novo: isso não significa
+    zero casos.
 """
 
 _MONTHS = [

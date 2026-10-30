@@ -355,3 +355,30 @@ def test_retrieve_knowledge_tool_handles_retrieval_failure(monkeypatch):
     assert parsed["status"] == "error"
     assert parsed["source"] == "rag"
     assert parsed["error_type"] == "retrieval_failed"
+
+
+def test_resolve_disease_ignores_accents_case_and_partial_names():
+    assert llm_tools.resolve_disease("ACIDENTE POR ESCORPIÃO") == ("ACIDENTE POR ESCORPIÃO", None)
+    assert llm_tools.resolve_disease("acidentes por escorpiao") == ("ACIDENTE POR ESCORPIÃO", None)
+    assert llm_tools.resolve_disease("Escorpião") == ("ACIDENTE POR ESCORPIÃO", None)
+    assert llm_tools.resolve_disease("infarto") == ("INFARTO AGUDO DO MIOCÁRDIO", None)
+    assert llm_tools.resolve_disease("insuficiencia cardiaca") == ("INSUFICIÊNCIA CARDÍACA", None)
+
+
+def test_resolve_disease_reports_ambiguous_and_unknown_names():
+    name, problem = llm_tools.resolve_disease("bronquite")
+    assert name is None and "BRONQUITE AGUDA" in problem and "BRONQUITE CRÔNICA" in problem
+
+    name, problem = llm_tools.resolve_disease("dengue")
+    assert name is None and "Unknown disease" in problem
+
+
+def test_total_cases_tool_queries_the_resolved_disease_name(monkeypatch):
+    calls = []
+    monkeypatch.setattr(llm_tools, "get_max_reference_date", lambda: None)
+    monkeypatch.setattr(llm_tools, "get_total_cases", lambda **kwargs: calls.append(kwargs) or 44974)
+
+    result = llm_tools.total_cases_tool.invoke({"disease": "escorpião", "state": "MG"})
+
+    assert result == "44974"
+    assert calls[0]["disease"] == "ACIDENTE POR ESCORPIÃO"
